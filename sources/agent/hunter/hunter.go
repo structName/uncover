@@ -56,7 +56,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				StartTime:  StartTime,
 				EndTime:    EndTime,
 			}
-			hunterResponse := agent.query(URL, session, hunterRequest, results)
+			hunterResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, hunterRequest, results)
+
 			if hunterResponse == nil {
 				break
 			}

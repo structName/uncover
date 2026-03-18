@@ -9,6 +9,6 @@ type Request struct {
 	CX          string `json:"cx"`
 }
 
-func (request *Request) buildURL(key, cx string) string {
+func (request *Request) buildURL(baseURL, key, cx string) string {
 	return fmt.Sprintf(baseURL, key, cx, request.SearchTerms, request.StartIndex, request.Count)
 }

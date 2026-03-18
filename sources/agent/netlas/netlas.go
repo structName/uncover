@@ -38,7 +38,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				Start: numberOfResults,
 			}
 
-			netlasResponse := agent.query(netlasRequest.buildURL(), session, results)
+			netlasResponse := agent.query(netlasRequest.buildURL(session.ResolveBaseURL(agent.Name(), baseURL)), session, results)
+
 			if netlasResponse == nil {
 				break
 			}

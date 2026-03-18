@@ -41,7 +41,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				Offset: currentPage,
 			}
 
-			criminalipResponse := agent.query(URL, session, criminalipRequest, results)
+			criminalipResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, criminalipRequest, results)
+
 			if criminalipResponse == nil {
 				break
 			}

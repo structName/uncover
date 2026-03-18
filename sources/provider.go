@@ -21,22 +21,39 @@ var (
 )
 
 type Provider struct {
-	Shodan     []string `yaml:"shodan"`
-	Censys     []string `yaml:"censys"`
-	Fofa       []string `yaml:"fofa"`
-	Quake      []string `yaml:"quake"`
-	Hunter     []string `yaml:"hunter"`
-	ZoomEye    []string `yaml:"zoomeye"`
-	Netlas     []string `yaml:"netlas"`
-	CriminalIP []string `yaml:"criminalip"`
-	Publicwww  []string `yaml:"publicwww"`
-	HunterHow  []string `yaml:"hunterhow"`
-	Google     []string `yaml:"google"`
-	Odin       []string `yaml:"odin"`
-	BinaryEdge []string `yaml:"binaryedge"`
-	Onyphe     []string `yaml:"onyphe"`
-	Driftnet   []string `yaml:"driftnet"`
-	GreyNoise  []string `yaml:"greynoise"`
+	Shodan            []string `yaml:"shodan"`
+	ShodanBaseURL     string   `yaml:"shodan_base_url"`
+	ShodanIDBBaseURL  string   `yaml:"shodan_idb_base_url"`
+	Censys            []string `yaml:"censys"`
+	CensysBaseURL     string   `yaml:"censys_base_url"`
+	Fofa              []string `yaml:"fofa"`
+	FofaBaseURL       string   `yaml:"fofa_base_url"`
+	Quake             []string `yaml:"quake"`
+	QuakeBaseURL      string   `yaml:"quake_base_url"`
+	Hunter            []string `yaml:"hunter"`
+	HunterBaseURL     string   `yaml:"hunter_base_url"`
+	ZoomEye           []string `yaml:"zoomeye"`
+	ZoomEyeBaseURL    string   `yaml:"zoomeye_base_url"`
+	Netlas            []string `yaml:"netlas"`
+	NetlasBaseURL     string   `yaml:"netlas_base_url"`
+	CriminalIP        []string `yaml:"criminalip"`
+	CriminalIPBaseURL string   `yaml:"criminalip_base_url"`
+	Publicwww         []string `yaml:"publicwww"`
+	PublicwwwBaseURL  string   `yaml:"publicwww_base_url"`
+	HunterHow         []string `yaml:"hunterhow"`
+	HunterHowBaseURL  string   `yaml:"hunterhow_base_url"`
+	Google            []string `yaml:"google"`
+	GoogleBaseURL     string   `yaml:"google_base_url"`
+	Odin              []string `yaml:"odin"`
+	OdinBaseURL       string   `yaml:"odin_base_url"`
+	BinaryEdge        []string `yaml:"binaryedge"`
+	BinaryEdgeBaseURL string   `yaml:"binaryedge_base_url"`
+	Onyphe            []string `yaml:"onyphe"`
+	OnypheBaseURL     string   `yaml:"onyphe_base_url"`
+	Driftnet          []string `yaml:"driftnet"`
+	DriftnetBaseURL   string   `yaml:"driftnet_base_url"`
+	GreyNoise         []string `yaml:"greynoise"`
+	GreyNoiseBaseURL  string   `yaml:"greynoise_base_url"`
 }
 
 // NewProvider loads provider keys from default location and env variables
@@ -50,7 +67,7 @@ func NewProvider() *Provider {
 }
 
 func (provider *Provider) GetKeys() Keys {
-	keys := Keys{}
+	keys := Keys{BaseURLs: provider.baseURLMap()}
 
 	if len(provider.Censys) > 0 {
 		censysKeys := provider.Censys[rand.Intn(len(provider.Censys))]
@@ -127,6 +144,36 @@ func (provider *Provider) GetKeys() Keys {
 	return keys
 }
 
+func (provider *Provider) baseURLMap() map[string]string {
+	baseURLs := make(map[string]string)
+	addIfPresent := func(engine, value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			baseURLs[engine] = value
+		}
+	}
+
+	addIfPresent("shodan", provider.ShodanBaseURL)
+	addIfPresent("shodan-idb", provider.ShodanIDBBaseURL)
+	addIfPresent("censys", provider.CensysBaseURL)
+	addIfPresent("fofa", provider.FofaBaseURL)
+	addIfPresent("quake", provider.QuakeBaseURL)
+	addIfPresent("hunter", provider.HunterBaseURL)
+	addIfPresent("zoomeye", provider.ZoomEyeBaseURL)
+	addIfPresent("netlas", provider.NetlasBaseURL)
+	addIfPresent("criminalip", provider.CriminalIPBaseURL)
+	addIfPresent("publicwww", provider.PublicwwwBaseURL)
+	addIfPresent("hunterhow", provider.HunterHowBaseURL)
+	addIfPresent("google", provider.GoogleBaseURL)
+	addIfPresent("odin", provider.OdinBaseURL)
+	addIfPresent("binaryedge", provider.BinaryEdgeBaseURL)
+	addIfPresent("onyphe", provider.OnypheBaseURL)
+	addIfPresent("driftnet", provider.DriftnetBaseURL)
+	addIfPresent("greynoise", provider.GreyNoiseBaseURL)
+
+	return baseURLs
+}
+
 // LoadProvidersFrom loads provider config from given location
 func (provider *Provider) LoadProviderConfig(location string) error {
 	if !fileutil.FileExists(location) {
@@ -173,6 +220,29 @@ func (provider *Provider) LoadProviderKeysFromEnv() {
 	provider.BinaryEdge = appendIfExists(provider.BinaryEdge, "BINARYEDGE_API_KEY")
 	provider.Onyphe = appendIfExists(provider.Onyphe, "ONYPHE_API_KEY")
 	provider.GreyNoise = appendIfExists(provider.GreyNoise, "GREYNOISE_API_KEY")
+
+	assignIfExists := func(target *string, envName string) {
+		if value, ok := os.LookupEnv(envName); ok {
+			*target = value
+		}
+	}
+	assignIfExists(&provider.ShodanBaseURL, "SHODAN_BASE_URL")
+	assignIfExists(&provider.ShodanIDBBaseURL, "SHODAN_IDB_BASE_URL")
+	assignIfExists(&provider.CensysBaseURL, "CENSYS_BASE_URL")
+	assignIfExists(&provider.FofaBaseURL, "FOFA_BASE_URL")
+	assignIfExists(&provider.QuakeBaseURL, "QUAKE_BASE_URL")
+	assignIfExists(&provider.HunterBaseURL, "HUNTER_BASE_URL")
+	assignIfExists(&provider.ZoomEyeBaseURL, "ZOOMEYE_BASE_URL")
+	assignIfExists(&provider.NetlasBaseURL, "NETLAS_BASE_URL")
+	assignIfExists(&provider.CriminalIPBaseURL, "CRIMINALIP_BASE_URL")
+	assignIfExists(&provider.PublicwwwBaseURL, "PUBLICWWW_BASE_URL")
+	assignIfExists(&provider.HunterHowBaseURL, "HUNTERHOW_BASE_URL")
+	assignIfExists(&provider.GoogleBaseURL, "GOOGLE_BASE_URL")
+	assignIfExists(&provider.OdinBaseURL, "ODIN_BASE_URL")
+	assignIfExists(&provider.BinaryEdgeBaseURL, "BINARYEDGE_BASE_URL")
+	assignIfExists(&provider.OnypheBaseURL, "ONYPHE_BASE_URL")
+	assignIfExists(&provider.DriftnetBaseURL, "DRIFTNET_BASE_URL")
+	assignIfExists(&provider.GreyNoiseBaseURL, "GREYNOISE_BASE_URL")
 }
 
 // HasKeys returns true if at least one agent/source has keys

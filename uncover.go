@@ -46,56 +46,49 @@ type Options struct {
 
 // Service handler of all uncover Agents
 type Service struct {
-	Options  *Options
-	Agents   []sources.Agent
-	Session  *sources.Session
-	Provider *sources.Provider
-	Keys     sources.Keys
+	Options         *Options
+	Agents          []sources.Agent
+	Session         *sources.Session
+	Provider        *sources.Provider
+	Keys            sources.Keys
+	UseProviderKeys bool
 }
 
 // New creates new uncover service instance
 func New(opts *Options) (*Service, error) {
-	s := &Service{Agents: []sources.Agent{}, Options: opts}
-	for _, v := range opts.Agents {
-		switch v {
-		case "shodan":
-			s.Agents = append(s.Agents, &shodan.Agent{})
-		case "censys":
-			s.Agents = append(s.Agents, &censys.Agent{})
-		case "fofa":
-			s.Agents = append(s.Agents, &fofa.Agent{})
-		case "shodan-idb":
-			s.Agents = append(s.Agents, &shodanidb.Agent{})
-		case "quake":
-			s.Agents = append(s.Agents, &quake.Agent{})
-		case "hunter":
-			s.Agents = append(s.Agents, &hunter.Agent{})
-		case "zoomeye":
-			s.Agents = append(s.Agents, &zoomeye.Agent{})
-		case "netlas":
-			s.Agents = append(s.Agents, &netlas.Agent{})
-		case "criminalip":
-			s.Agents = append(s.Agents, &criminalip.Agent{})
-		case "publicwww":
-			s.Agents = append(s.Agents, &publicwww.Agent{})
-		case "hunterhow":
-			s.Agents = append(s.Agents, &hunterhow.Agent{})
-		case "google":
-			s.Agents = append(s.Agents, &google.Agent{})
-		case "odin":
-			s.Agents = append(s.Agents, &odin.Agent{})
-		case "binaryedge":
-			s.Agents = append(s.Agents, &binaryedge.Agent{})
-		case "onyphe":
-			s.Agents = append(s.Agents, &onyphe.Agent{})
-		case "driftnet":
-			s.Agents = append(s.Agents, &driftnet.Agent{})
-		case "greynoise":
-			s.Agents = append(s.Agents, &greynoise.Agent{})
-		}
+	provider := sources.NewProvider()
+	return newService(opts, provider, nil, true)
+}
+
+// NewWithProvider creates a new uncover service instance with an injected provider.
+func NewWithProvider(opts *Options, provider *sources.Provider) (*Service, error) {
+	if provider == nil {
+		provider = &sources.Provider{}
 	}
-	s.Provider = sources.NewProvider()
-	s.Keys = s.Provider.GetKeys()
+	return newService(opts, provider, nil, true)
+}
+
+// NewWithKeys creates a new uncover service instance with injected keys.
+func NewWithKeys(opts *Options, keys *sources.Keys) (*Service, error) {
+	if keys == nil {
+		keys = &sources.Keys{}
+	}
+	return newService(opts, &sources.Provider{}, keys, false)
+}
+
+func newService(opts *Options, provider *sources.Provider, keys *sources.Keys, useProviderKeys bool) (*Service, error) {
+	s := &Service{
+		Agents:          buildAgents(opts.Agents),
+		Options:         opts,
+		Provider:        provider,
+		UseProviderKeys: useProviderKeys,
+	}
+
+	if useProviderKeys {
+		s.Keys = provider.GetKeys()
+	} else {
+		s.Keys = *keys
+	}
 
 	if opts.RateLimit == 0 {
 		opts.RateLimit = 30
@@ -112,6 +105,49 @@ func New(opts *Options) (*Service, error) {
 	return s, nil
 }
 
+func buildAgents(agentNames []string) []sources.Agent {
+	agents := make([]sources.Agent, 0, len(agentNames))
+	for _, v := range agentNames {
+		switch v {
+		case "shodan":
+			agents = append(agents, &shodan.Agent{})
+		case "censys":
+			agents = append(agents, &censys.Agent{})
+		case "fofa":
+			agents = append(agents, &fofa.Agent{})
+		case "shodan-idb":
+			agents = append(agents, &shodanidb.Agent{})
+		case "quake":
+			agents = append(agents, &quake.Agent{})
+		case "hunter":
+			agents = append(agents, &hunter.Agent{})
+		case "zoomeye":
+			agents = append(agents, &zoomeye.Agent{})
+		case "netlas":
+			agents = append(agents, &netlas.Agent{})
+		case "criminalip":
+			agents = append(agents, &criminalip.Agent{})
+		case "publicwww":
+			agents = append(agents, &publicwww.Agent{})
+		case "hunterhow":
+			agents = append(agents, &hunterhow.Agent{})
+		case "google":
+			agents = append(agents, &google.Agent{})
+		case "odin":
+			agents = append(agents, &odin.Agent{})
+		case "binaryedge":
+			agents = append(agents, &binaryedge.Agent{})
+		case "onyphe":
+			agents = append(agents, &onyphe.Agent{})
+		case "driftnet":
+			agents = append(agents, &driftnet.Agent{})
+		case "greynoise":
+			agents = append(agents, &greynoise.Agent{})
+		}
+	}
+	return agents
+}
+
 func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	// unlikely but as a precaution to handle random panics check all types
 	if err := s.nilCheck(); err != nil {
@@ -120,7 +156,7 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	switch {
 	case len(s.Agents) == 0:
 		return nil, errorutil.NewWithTag("uncover", "no agent/source specified")
-	case !s.hasAnyAnonymousProvider() && !s.Provider.HasKeys():
+	case !s.hasAnyAnonymousProvider() && !s.hasKeysAvailable():
 		return nil, errorutil.NewWithTag("uncover", "agents %v requires keys but no keys were found", s.Options.Agents)
 	}
 
@@ -130,12 +166,13 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	for _, q := range s.Options.Queries {
 	agentLabel:
 		for _, agent := range s.Agents {
-			keys := s.Provider.GetKeys()
+			keys := s.resolveKeysForAgent()
 			if keys.Empty() && agent.Name() != "shodan-idb" {
 				gologger.Error().Msgf(agent.Name(), "agent given but keys not found")
 				continue agentLabel
 			}
-			ch, err := agent.Query(s.Session, &sources.Query{
+			session := s.Session.CloneWithKeys(&keys)
+			ch, err := agent.Query(session, &sources.Query{
 				Query: q,
 				Limit: s.Options.Limit,
 			})
@@ -169,6 +206,20 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	}(wg, megaChan)
 
 	return megaChan, nil
+}
+
+func (s *Service) resolveKeysForAgent() sources.Keys {
+	if s.UseProviderKeys {
+		return s.Provider.GetKeys()
+	}
+	return s.Keys
+}
+
+func (s *Service) hasKeysAvailable() bool {
+	if s.UseProviderKeys {
+		return s.Provider != nil && s.Provider.HasKeys()
+	}
+	return !s.Keys.Empty()
 }
 
 // ExecuteWithWriters writes output to writer along with stdout

@@ -3,6 +3,7 @@ package hunterhow
 import (
 	"encoding/base64"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,12 +13,13 @@ type Request struct {
 	PageSize int    `json:"page_size"`
 }
 
-func (r *Request) buildURL(key string) string {
+func (r *Request) buildURL(baseURL, key string) string {
 	timeFormat := "2006-01-02"
 	now := time.Now()
 	firstDay := time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location())
 	startTimeStr := firstDay.Format(timeFormat)
 	endTimeStr := now.Format(timeFormat)
+	baseURL = strings.TrimRight(baseURL, "/") + "/"
 
 	queryStr := baseURL +
 		baseEndpoint + "?api-key=" + key +

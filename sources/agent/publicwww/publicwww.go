@@ -43,7 +43,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				break
 			}
 
-			publicwwwResponse := agent.query(publicwwwRequest.buildURL(session.Keys.PublicwwwToken), session, results)
+			publicwwwResponse := agent.query(publicwwwRequest.buildURL(session.ResolveBaseURL(agent.Name(), baseURL), session.Keys.PublicwwwToken), session, results)
+
 			if publicwwwResponse == nil {
 				break
 			}

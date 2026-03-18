@@ -118,7 +118,8 @@ func (agent *Agent) query(session *sources.Session, googleRequest *Request, resu
 
 func (agent *Agent) queryURL(session *sources.Session, googleRequest *Request) (*http.Response, error) {
 
-	googleURL := googleRequest.buildURL(session.Keys.GoogleKey, session.Keys.GoogleCX)
+	googleURL := googleRequest.buildURL(session.ResolveURL(agent.Name(), baseURL), session.Keys.GoogleKey, session.Keys.GoogleCX)
+
 	request, err := sources.NewHTTPRequest(http.MethodGet, googleURL, nil)
 	if err != nil {
 		return nil, err

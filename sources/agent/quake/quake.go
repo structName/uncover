@@ -43,7 +43,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				IgnoreCache: true,
 				Include:     []string{"ip", "port", "hostname"},
 			}
-			quakeResponse := agent.query(URL, session, quakeRequest, results)
+			quakeResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, quakeRequest, results)
+
 			if quakeResponse == nil {
 				break
 			}

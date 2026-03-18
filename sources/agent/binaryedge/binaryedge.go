@@ -36,7 +36,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 }
 
 func (agent *Agent) query(session *sources.Session, searchQuery string, results chan sources.Result) {
-	resp, err := agent.queryURL(session, URL, searchQuery)
+	resp, err := agent.queryURL(session, session.ResolveURL(agent.Name(), URL), searchQuery)
+
 	if err != nil {
 		results <- sources.Result{Source: agent.Name(), Error: err}
 		return

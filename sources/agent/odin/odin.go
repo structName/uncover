@@ -76,7 +76,8 @@ func (agent *Agent) query(session *sources.Session, odinReq *OdinRequest, result
 		return nil
 	}
 
-	httpReq, err := sources.NewHTTPRequest(http.MethodPost, OdinAPIURL, bytes.NewReader(reqBody))
+	httpReq, err := sources.NewHTTPRequest(http.MethodPost, session.ResolveURL(agent.Name(), OdinAPIURL), bytes.NewReader(reqBody))
+
 	if err != nil {
 		results <- sources.Result{Source: agent.Name(), Error: err}
 		return nil

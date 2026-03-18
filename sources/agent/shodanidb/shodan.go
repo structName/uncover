@@ -66,7 +66,8 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 		return
 	}
 	for ip := range ipChan {
-		resp, err := agent.queryURL(session, URL, &ShodanRequest{Query: ip})
+		resp, err := agent.queryURL(session, session.ResolveURL(agent.Name(), URL), &ShodanRequest{Query: ip})
+
 		if err != nil {
 			results <- sources.Result{Source: agent.Name(), Error: err}
 			continue

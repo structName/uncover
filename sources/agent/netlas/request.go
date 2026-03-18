@@ -3,6 +3,7 @@ package netlas
 import (
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 type Request struct {
@@ -10,7 +11,8 @@ type Request struct {
 	Start int    `json:"start"`
 }
 
-func (r *Request) buildURL() string {
+func (r *Request) buildURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/") + "/"
 	return baseURL +
 		baseEndpoint +
 		"?q=" +

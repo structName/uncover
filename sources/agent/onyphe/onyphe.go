@@ -106,7 +106,7 @@ func (agent *Agent) query(session *sources.Session, onypheRequest OnypheRequest,
 func (agent *Agent) queryURL(session *sources.Session, onypheRequest *OnypheRequest) (*http.Response, error) {
 	escapedQuery := url.QueryEscape(onypheRequest.Query)
 	escapedQuery = strings.ReplaceAll(escapedQuery, "%22", "\"")
-	urlWithQuery := fmt.Sprintf(URLTemplate, escapedQuery, onypheRequest.Page)
+	urlWithQuery := fmt.Sprintf(session.ResolveURL(agent.Name(), URLTemplate), escapedQuery, onypheRequest.Page)
 
 	request, err := sources.NewHTTPRequest(http.MethodGet, urlWithQuery, nil)
 	if err != nil {

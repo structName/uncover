@@ -45,7 +45,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				break
 			}
 
-			hunterhowResponse := agent.query(hunterhowRequest.buildURL(session.Keys.HunterHowToken), session, results)
+			hunterhowResponse := agent.query(hunterhowRequest.buildURL(session.ResolveBaseURL(agent.Name(), baseURL), session.Keys.HunterHowToken), session, results)
+
 			if hunterhowResponse == nil {
 				break
 			}

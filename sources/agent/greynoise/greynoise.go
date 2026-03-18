@@ -170,9 +170,10 @@ func (agent *Agent) query(session *sources.Session, request *Request) (*Response
 		path = "/v3/gnql/metadata"
 	}
 
-	baseURL, _ := url.Parse(URL)
+	baseURL, _ := url.Parse(session.ResolveURL(agent.Name(), URL))
 	baseURL.Path = path
 	fullURL := baseURL.String()
+
 	if enc := params.Encode(); enc != "" {
 		fullURL = fullURL + "?" + enc
 	}

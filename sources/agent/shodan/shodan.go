@@ -38,7 +38,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				Page:  currentPage,
 			}
 
-			shodanResponse := agent.query(URL, session, shodanRequest, results)
+			shodanResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, shodanRequest, results)
+
 			if shodanResponse == nil {
 				break
 			}

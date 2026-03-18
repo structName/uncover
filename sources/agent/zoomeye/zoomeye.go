@@ -45,7 +45,8 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				PageSize: 100,
 			}
 
-			zoomeyeResponse := agent.query(URL, session, zoomeyeRequest, results)
+			zoomeyeResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, zoomeyeRequest, results)
+
 			if zoomeyeResponse == nil {
 				break
 			}

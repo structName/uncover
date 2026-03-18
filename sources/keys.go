@@ -1,5 +1,7 @@
 package sources
 
+import "strings"
+
 type Keys struct {
 	CensysToken     string
 	CensysOrgId     string
@@ -20,6 +22,7 @@ type Keys struct {
 	OnypheKey       string
 	DriftnetToken   string
 	GreyNoiseKey    string
+	BaseURLs        map[string]string
 }
 
 func (keys Keys) Empty() bool {
@@ -42,4 +45,11 @@ func (keys Keys) Empty() bool {
 		keys.OnypheKey == "" &&
 		keys.DriftnetToken == "" &&
 		keys.GreyNoiseKey == ""
+}
+
+func (keys Keys) BaseURLFor(engine string) string {
+	if keys.BaseURLs == nil {
+		return ""
+	}
+	return strings.TrimSpace(keys.BaseURLs[engine])
 }

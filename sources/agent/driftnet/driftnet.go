@@ -259,7 +259,7 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 
 // queryURL runs the actual HTTP request to the API
 func (agent *Agent) queryURL(session *sources.Session, URL string, driftnetRequest *DriftnetRequest) (*http.Response, error) {
-	apiURL := fmt.Sprintf(URL, url.QueryEscape(driftnetRequest.From), processQuery(driftnetRequest.Query))
+	apiURL := fmt.Sprintf(session.ResolveURL(agent.Name(), URL), url.QueryEscape(driftnetRequest.From), processQuery(driftnetRequest.Query))
 
 	// Page 0 is the default we don't need to supply the page param for that
 	if driftnetRequest.Page > 0 {
