@@ -35,8 +35,8 @@ func (agent *Agent) Name() string {
 }
 
 func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan sources.Result, error) {
-	if session.Keys.FofaEmail == "" || session.Keys.FofaKey == "" {
-		return nil, errors.New("empty fofa keys")
+	if session.Keys.FofaKey == "" {
+		return nil, errors.New("empty fofa key")
 	}
 
 	results := make(chan sources.Result)

@@ -83,12 +83,7 @@ func (provider *Provider) GetKeys() Keys {
 	}
 
 	if len(provider.Fofa) > 0 {
-		fofaKeys := provider.Fofa[rand.Intn(len(provider.Fofa))]
-		parts := strings.Split(fofaKeys, ":")
-		if len(parts) == 2 {
-			keys.FofaEmail = parts[0]
-			keys.FofaKey = parts[1]
-		}
+		keys.FofaEmail, keys.FofaKey = parseFofaCredential(provider.Fofa[rand.Intn(len(provider.Fofa))])
 	}
 
 	if len(provider.Quake) > 0 {
@@ -213,7 +208,7 @@ func (provider *Provider) LoadProviderKeysFromEnv() {
 		}
 		return arr
 	}
-	provider.Fofa = appendIfAllExists(provider.Fofa, "FOFA_EMAIL", "FOFA_KEY")
+	provider.Fofa = appendIfExists(provider.Fofa, "FOFA_KEY")
 	provider.Censys = appendIfAllExists(provider.Censys, "CENSYS_API_TOKEN", "CENSYS_ORGANIZATION_ID")
 	provider.Google = appendIfAllExists(provider.Google, "GOOGLE_API_KEY", "GOOGLE_API_CX")
 	provider.Odin = appendIfExists(provider.Odin, "ODIN_API_KEY")
@@ -280,4 +275,18 @@ func init() {
 			gologger.Warning().Msgf("couldn't write provider default file: %s\n", err)
 		}
 	}
+}
+
+func parseFofaCredential(value string) (string, string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", ""
+	}
+
+	parts := strings.SplitN(trimmed, ":", 2)
+	if len(parts) == 2 && strings.Contains(parts[0], "@") {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+
+	return "", trimmed
 }

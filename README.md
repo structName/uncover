@@ -138,8 +138,8 @@ censys:
   - CENSYS_API_TOKEN_1:CENSYS_ORGANIZATION_ID_1
   - CENSYS_API_TOKEN_2:CENSYS_ORGANIZATION_ID_2
 fofa:
-  - FOFA_EMAIL_1:FOFA_KEY_1
-  - FOFA_EMAIL_2:FOFA_KEY_2
+  - FOFA_KEY_1
+  - FOFA_KEY_2
 quake:
   - QUAKE_TOKEN_1
   - QUAKE_TOKEN_2
@@ -180,7 +180,6 @@ alternatively you can also set the API key as environment variable in your bash 
 export SHODAN_API_KEY=xxx
 export CENSYS_API_TOKEN=xxx
 export CENSYS_ORGANIZATION_ID=xxx
-export FOFA_EMAIL=xxx
 export FOFA_KEY=xxx
 export QUAKE_TOKEN=xxx
 export HUNTER_API_KEY=xxx
