@@ -88,17 +88,24 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 		results <- sources.Result{Source: agent.Name(), Error: err}
 		return nil
 	}
+	defer func(Body io.ReadCloser) {
+		if bodyCloseErr := Body.Close(); bodyCloseErr != nil {
+			gologger.Info().Msgf("response body close error : %v", bodyCloseErr)
+		}
+	}(resp.Body)
+
 	fofaResponse := &FofaResponse{}
-	RespBodyByBodyBytes, _ := io.ReadAll(resp.Body)
-	if err := json.NewDecoder(resp.Body).Decode(fofaResponse); err != nil {
-		result := sources.Result{Source: agent.Name()}
-		defer func(Body io.ReadCloser) {
-			if bodyCloseErr := Body.Close(); bodyCloseErr != nil {
-				gologger.Info().Msgf("response body close error : %v", bodyCloseErr)
-			}
-		}(resp.Body)
-		raw, _ := json.Marshal(RespBodyByBodyBytes)
-		result.Raw = raw
+	respBodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		results <- sources.Result{Source: agent.Name(), Error: readErr}
+		return nil
+	}
+	if err := json.Unmarshal(respBodyBytes, fofaResponse); err != nil {
+		result := sources.Result{
+			Source: agent.Name(),
+			Raw:    respBodyBytes,
+			Error:  fmt.Errorf("failed to decode fofa response: %w", err),
+		}
 		results <- result
 		return nil
 	}
