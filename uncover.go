@@ -98,7 +98,15 @@ func newService(opts *Options, provider *sources.Provider, keys *sources.Keys, u
 	}
 
 	var err error
-	s.Session, err = sources.NewSession(&s.Keys, opts.MaxRetry, opts.Timeout, 10, opts.Agents, opts.RateLimitUnit, opts.Proxy)
+	s.Session, err = sources.NewSession(
+		&s.Keys,
+		opts.MaxRetry,
+		opts.Timeout,
+		int(opts.RateLimit),
+		opts.Agents,
+		opts.RateLimitUnit,
+		opts.Proxy,
+	)
 	if err != nil {
 		return nil, err
 	}

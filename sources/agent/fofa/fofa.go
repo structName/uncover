@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/projectdiscovery/gologger"
 
@@ -72,8 +73,20 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 }
 
 func (agent *Agent) queryURL(session *sources.Session, URL string, fofaRequest *FofaRequest) (*http.Response, error) {
+	fields := strings.TrimSpace(fofaRequest.Fields)
+	if fields == "" {
+		fields = Fields
+	}
 	base64Query := base64.StdEncoding.EncodeToString([]byte(fofaRequest.Query))
-	fofaURL := fmt.Sprintf(URL, session.Keys.FofaKey, base64Query, Fields, fofaRequest.Page, fofaRequest.Size, fofaRequest.Full)
+	fofaURL := fmt.Sprintf(
+		URL,
+		session.Keys.FofaKey,
+		base64Query,
+		fields,
+		fofaRequest.Page,
+		fofaRequest.Size,
+		fofaRequest.Full,
+	)
 	request, err := sources.NewHTTPRequest(http.MethodGet, fofaURL, nil)
 	if err != nil {
 		return nil, err
@@ -114,16 +127,47 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 		return nil
 	}
 
+	fields := strings.TrimSpace(fofaRequest.Fields)
+	if fields == "" {
+		fields = Fields
+	}
+	fieldOrder := parseFieldOrder(fields)
 	for _, fofaResult := range fofaResponse.Results {
 		result := sources.Result{Source: agent.Name()}
-		result.IP = fofaResult[0]
-		result.Port, _ = strconv.Atoi(fofaResult[1])
-		result.Host = fofaResult[2]
+		for index, field := range fieldOrder {
+			if index >= len(fofaResult) {
+				continue
+			}
+			value := strings.TrimSpace(fofaResult[index])
+			switch field {
+			case "ip":
+				result.IP = value
+			case "port":
+				result.Port, _ = strconv.Atoi(value)
+			case "host":
+				result.Host = value
+			case "link":
+				result.Url = value
+			}
+		}
 		raw, _ := json.Marshal(fofaResult)
 		result.Raw = raw
 		results <- result
 	}
 	return fofaResponse
+}
+
+func parseFieldOrder(fields string) []string {
+	parts := strings.Split(fields, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		field := strings.ToLower(strings.TrimSpace(part))
+		if field == "" {
+			continue
+		}
+		result = append(result, field)
+	}
+	return result
 }
 
 type FofaRequest struct {

@@ -92,13 +92,16 @@ func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, 
 
 	// setup ratelimit of all engines
 	for _, engine := range engines {
-		rateLimitOpts := DefaultRateLimits[engine]
-		if rateLimitOpts == nil {
-			// fallback to using default ratelimit
-			rateLimitOpts = defaultRatelimit
-			rateLimitOpts.Key = engine
+		rateLimitOpts := defaultRatelimit
+		if rateLimit <= 0 {
+			rateLimitOpts = DefaultRateLimits[engine]
+			if rateLimitOpts == nil {
+				rateLimitOpts = defaultRatelimit
+			}
 		}
-		if err = session.RateLimits.Add(rateLimitOpts); err != nil {
+		copied := *rateLimitOpts
+		copied.Key = engine
+		if err = session.RateLimits.Add(&copied); err != nil {
 			return nil, errorutil.NewWithErr(err).Msgf("failed to setup ratelimit of %v got %v", engine, err)
 		}
 	}

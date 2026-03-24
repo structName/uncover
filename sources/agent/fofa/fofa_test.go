@@ -126,3 +126,74 @@ func TestQueryReturnsErrorForInvalidJSON(t *testing.T) {
 		t.Fatal("expected one error result")
 	}
 }
+
+func TestQueryDecodesConfiguredFieldOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"error": false,
+			"page": 1,
+			"size": 1,
+			"results": [["220.181.38.148", "www.baidu.com", "443", "https://www.baidu.com"]]
+		}`))
+	}))
+	defer server.Close()
+
+	session, err := sources.NewSession(
+		&sources.Keys{
+			FofaKey: "test-key",
+			BaseURLs: map[string]string{
+				"fofa": server.URL,
+			},
+		},
+		0,
+		10,
+		0,
+		[]string{"fofa"},
+		time.Second,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	agent := &Agent{}
+	results := make(chan sources.Result, 2)
+	response := agent.query(
+		session.ResolveURL(agent.Name(), URL),
+		session,
+		&FofaRequest{
+			Query:  `domain="baidu.com"`,
+			Fields: "ip,host,port,link",
+			Page:   1,
+			Size:   1,
+		},
+		results,
+	)
+	if response == nil {
+		t.Fatal("expected fofa response")
+	}
+
+	select {
+	case result := <-results:
+		if result.Error != nil {
+			t.Fatalf("expected decoded result, got error %v", result.Error)
+		}
+		if result.IP != "220.181.38.148" {
+			t.Fatalf("expected IP to be decoded, got %q", result.IP)
+		}
+		if result.Host != "www.baidu.com" {
+			t.Fatalf("expected host to be decoded, got %q", result.Host)
+		}
+		if result.Port != 443 {
+			t.Fatalf("expected port to be decoded, got %d", result.Port)
+		}
+		if result.Url != "https://www.baidu.com" {
+			t.Fatalf("expected url to be decoded, got %q", result.Url)
+		}
+	default:
+		t.Fatal("expected one decoded result")
+	}
+}

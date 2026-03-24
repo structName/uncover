@@ -17,6 +17,14 @@ const (
 	Size = 100
 )
 
+var (
+	IgnoreCache = true
+	Latest      = true
+	StartTime   = ""
+	EndTime     = ""
+	Include     = []string{"ip", "port", "hostname"}
+)
+
 type Agent struct{}
 
 func (agent *Agent) Name() string {
@@ -40,8 +48,11 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				Query:       query.Query,
 				Size:        Size,
 				Start:       numberOfResults,
-				IgnoreCache: true,
-				Include:     []string{"ip", "port", "hostname"},
+				IgnoreCache: IgnoreCache,
+				Latest:      Latest,
+				StartTime:   StartTime,
+				EndTime:     EndTime,
+				Include:     Include,
 			}
 			quakeResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, quakeRequest, results)
 
