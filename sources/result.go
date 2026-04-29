@@ -7,14 +7,15 @@ import (
 )
 
 type Result struct {
-	Timestamp int64  `json:"timestamp"`
-	Source    string `json:"source"`
-	IP        string `json:"ip"`
-	Port      int    `json:"port"`
-	Host      string `json:"host"`
-	Url       string `json:"url"`
-	Raw       []byte `json:"-"`
-	Error     error  `json:"-"`
+	Timestamp int64             `json:"timestamp"`
+	Source    string            `json:"source"`
+	IP        string            `json:"ip"`
+	Port      int               `json:"port"`
+	Host      string            `json:"host"`
+	Url       string            `json:"url"`
+	Extras    map[string]string `json:"extras,omitempty"`
+	Raw       []byte            `json:"-"`
+	Error     error             `json:"-"`
 }
 
 func (result *Result) IpPort() string {

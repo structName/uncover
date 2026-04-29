@@ -20,14 +20,33 @@ const (
 )
 
 var (
-	// Size is the number of results to return per page
-	Size = 100
+	// DefaultPageSize is requested when the caller did not set query.Limit.
+	// Picked to balance round-trips against response size; a wide
+	// extra_fields list (10+ columns) on a 2000-row page is still ~1MB.
+	DefaultPageSize = 2000
+	// MaxPageSize is FOFA's documented per-page ceiling; requesting more
+	// is silently truncated server-side.
+	MaxPageSize = 10000
+	// Size kept for backwards compatibility with code that sets it
+	// directly. When non-zero, it is used as the floor for the per-page
+	// request when query.Limit is unset.
+	Size = DefaultPageSize
 	// Fields is the fields to return in the results
 	Fields = "ip,port,host"
 
 	// if Full is true results from more than one year will be returned
 	Full = false
 )
+
+// clampPageSize returns the per-page Size to send to FOFA: capped by
+// MaxPageSize and lowered to query.Limit when the caller wants fewer
+// results than a default page would supply.
+func clampPageSize(limit int) int {
+	if limit > 0 && limit < MaxPageSize {
+		return limit
+	}
+	return MaxPageSize
+}
 
 type Agent struct{}
 
@@ -47,11 +66,12 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 		var numberOfResults int
 		page := 1
+		pageSize := clampPageSize(query.Limit)
 		for {
 			fofaRequest := &FofaRequest{
 				Query:  query.Query,
 				Fields: Fields,
-				Size:   Size,
+				Size:   pageSize,
 				Page:   page,
 				Full:   Full,
 			}
@@ -134,6 +154,7 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 	fieldOrder := parseFieldOrder(fields)
 	for _, fofaResult := range fofaResponse.Results {
 		result := sources.Result{Source: agent.Name()}
+		extras := make(map[string]string, len(fieldOrder))
 		for index, field := range fieldOrder {
 			if index >= len(fofaResult) {
 				continue
@@ -149,6 +170,12 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 			case "link":
 				result.Url = value
 			}
+			if value != "" {
+				extras[field] = value
+			}
+		}
+		if len(extras) > 0 {
+			result.Extras = extras
 		}
 		raw, _ := json.Marshal(fofaResult)
 		result.Raw = raw
