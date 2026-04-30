@@ -1,9 +1,24 @@
 package hunter
 
 type ResponseDataArr struct {
-	IP     string `json:"ip"`
-	Port   int    `json:"port"`
-	Domain string `json:"domain"`
+	IP         string            `json:"ip"`
+	Port       int               `json:"port"`
+	Domain     string            `json:"domain"`
+	WebTitle   string            `json:"web_title"`
+	Component  []HunterComponent `json:"component"`
+	Banner     string            `json:"banner"`
+	Country    string            `json:"country"`
+	Province   string            `json:"province"`
+	City       string            `json:"city"`
+	Protocol   string            `json:"protocol"`
+	OS         string            `json:"os"`
+	StatusCode int               `json:"status_code"`
+	URL        string            `json:"url"`
+}
+
+type HunterComponent struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 type responseData struct {

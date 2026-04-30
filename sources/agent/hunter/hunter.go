@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/projectdiscovery/gologger"
 
@@ -27,6 +29,22 @@ var (
 )
 
 type Agent struct{}
+
+// joinHunterComponentNames flattens Hunter's [{name, version}] array to
+// "nginx, apache" — names only, comma-separated, version dropped (still
+// available via RawData for callers that need it).
+func joinHunterComponentNames(comps []HunterComponent) string {
+	if len(comps) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(comps))
+	for _, c := range comps {
+		if name := strings.TrimSpace(c.Name); name != "" {
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
 
 func (agent *Agent) Name() string {
 	return "hunter"
@@ -102,6 +120,37 @@ func (agent *Agent) query(URL string, session *sources.Session, hunterRequest *R
 			result.IP = hunterResult.IP
 			result.Port = hunterResult.Port
 			result.Host = hunterResult.Domain
+			result.Url = hunterResult.URL
+
+			extras := map[string]string{}
+			if hunterResult.WebTitle != "" {
+				extras["web_title"] = hunterResult.WebTitle
+			}
+			if hunterResult.Banner != "" {
+				extras["banner"] = hunterResult.Banner
+			}
+			if hunterResult.Country != "" {
+				extras["country"] = hunterResult.Country
+			}
+			if hunterResult.Province != "" {
+				extras["province"] = hunterResult.Province
+			}
+			if hunterResult.City != "" {
+				extras["city"] = hunterResult.City
+			}
+			if hunterResult.Protocol != "" {
+				extras["protocol"] = hunterResult.Protocol
+			}
+			if hunterResult.StatusCode > 0 {
+				extras["status_code"] = strconv.Itoa(hunterResult.StatusCode)
+			}
+			if name := joinHunterComponentNames(hunterResult.Component); name != "" {
+				extras["component"] = name
+			}
+			if len(extras) > 0 {
+				result.Extras = extras
+			}
+
 			raw, _ := json.Marshal(hunterResult)
 			result.Raw = raw
 			results <- result
