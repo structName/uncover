@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/projectdiscovery/uncover/sources"
 	errorutil "github.com/projectdiscovery/utils/errors"
@@ -22,7 +24,17 @@ var (
 	Latest      = true
 	StartTime   = ""
 	EndTime     = ""
-	Include     = []string{"ip", "port", "hostname"}
+	Include = []string{
+		"ip", "port", "hostname",
+		"service.name",
+		"service.banner",
+		"service.http.title",
+		"service.http.status_code",
+		"location.country_cn",
+		"location.province_cn",
+		"location.city_cn",
+		"components",
+	}
 )
 
 type Agent struct{}
@@ -102,12 +114,50 @@ func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Re
 		return nil
 	}
 
-	for _, quakeResult := range quakeResponse.Data {
+	for _, qr := range quakeResponse.Data {
 		result := sources.Result{Source: agent.Name()}
-		result.IP = quakeResult.IP
-		result.Port = quakeResult.Port
-		result.Host = quakeResult.Hostname
-		raw, _ := json.Marshal(quakeResult)
+		result.IP = qr.IP
+		result.Port = qr.Port
+		result.Host = qr.Hostname
+
+		extras := map[string]string{}
+		if qr.Service != nil {
+			if qr.Service.Name != "" {
+				extras["service.name"] = qr.Service.Name
+			}
+			if qr.Service.Banner != "" {
+				extras["service.banner"] = qr.Service.Banner
+			}
+			if qr.Service.HTTP != nil {
+				if qr.Service.HTTP.Title != "" {
+					extras["service.http.title"] = qr.Service.HTTP.Title
+				}
+				if qr.Service.HTTP.StatusCode > 0 {
+					extras["service.http.status_code"] = strconv.Itoa(qr.Service.HTTP.StatusCode)
+				}
+			}
+		}
+		if qr.Location != nil {
+			if qr.Location.CountryCN != "" {
+				extras["location.country_cn"] = qr.Location.CountryCN
+			}
+			if qr.Location.ProvinceCN != "" {
+				extras["location.province_cn"] = qr.Location.ProvinceCN
+			}
+			if qr.Location.CityCN != "" {
+				extras["location.city_cn"] = qr.Location.CityCN
+			}
+		}
+		if len(qr.Components) > 0 {
+			if name := strings.TrimSpace(qr.Components[0].ProductName); name != "" {
+				extras["components.product_name"] = name
+			}
+		}
+		if len(extras) > 0 {
+			result.Extras = extras
+		}
+
+		raw, _ := json.Marshal(qr)
 		result.Raw = raw
 		results <- result
 	}
