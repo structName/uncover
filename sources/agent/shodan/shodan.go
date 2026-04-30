@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"errors"
 
@@ -84,28 +85,53 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 
 	for _, shodanResult := range shodanResponse.Results {
 		result := sources.Result{Source: agent.Name()}
-		if port, ok := shodanResult["port"]; ok {
-			result.Port = int(port.(float64))
+		if port, ok := shodanResult["port"].(float64); ok {
+			result.Port = int(port)
 		}
-		if ip, ok := shodanResult["ip_str"]; ok {
-			result.IP = ip.(string)
+		if ip, ok := shodanResult["ip_str"].(string); ok {
+			result.IP = ip
 		}
-		// has hostnames?
-		if hostnames, ok := shodanResult["hostnames"]; ok {
-			if _, ok := hostnames.([]interface{}); ok {
-				for _, hostname := range hostnames.([]interface{}) {
-					result.Host = fmt.Sprint(hostname)
+		if hostnames, ok := shodanResult["hostnames"].([]interface{}); ok {
+			for _, hostname := range hostnames {
+				result.Host = fmt.Sprint(hostname)
+			}
+		}
+
+		extras := map[string]string{}
+		if v, ok := shodanResult["transport"].(string); ok && v != "" {
+			extras["transport"] = v
+		}
+		if v, ok := shodanResult["product"].(string); ok && v != "" {
+			extras["product"] = v
+		}
+		if v, ok := shodanResult["data"].(string); ok && v != "" {
+			extras["data"] = v
+		}
+		if http, ok := shodanResult["http"].(map[string]interface{}); ok {
+			if v, ok := http["title"].(string); ok && v != "" {
+				extras["http.title"] = v
+			}
+			if v, ok := http["server"].(string); ok && v != "" {
+				extras["http.server"] = v
+			}
+			if v, ok := http["status"].(float64); ok {
+				extras["http.status"] = strconv.Itoa(int(v))
+			}
+		}
+		if loc, ok := shodanResult["location"].(map[string]interface{}); ok {
+			for _, k := range []string{"country_name", "country_code", "region_code", "city"} {
+				if v, ok := loc[k].(string); ok && v != "" {
+					extras[k] = v
 				}
 			}
-			raw, _ := json.Marshal(shodanResult)
-			result.Raw = raw
-			results <- result
-		} else {
-			raw, _ := json.Marshal(shodanResult)
-			result.Raw = raw
-			// only ip
-			results <- result
 		}
+		if len(extras) > 0 {
+			result.Extras = extras
+		}
+
+		raw, _ := json.Marshal(shodanResult)
+		result.Raw = raw
+		results <- result
 	}
 
 	return shodanResponse
