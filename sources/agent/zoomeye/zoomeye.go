@@ -105,14 +105,43 @@ func (agent *Agent) query(URL string, session *sources.Session, zoomeyeRequest *
 		return nil
 	}
 
-	for _, result := range zoomeyeResponse.Results {
+	for _, zr := range zoomeyeResponse.Results {
 		sourceResult := sources.Result{Source: agent.Name()}
+		sourceResult.IP = zr.IP
+		sourceResult.Port = zr.Port
+		sourceResult.Host = zr.Hostname
+		if sourceResult.Host == "" {
+			sourceResult.Host = zr.Domain
+		}
+		sourceResult.Url = zr.URL
 
-		sourceResult.IP = result.IP
-		sourceResult.Port = result.Port
-		sourceResult.Host = result.Hostname
+		extras := map[string]string{}
+		if zr.Title != "" {
+			extras["title"] = zr.Title
+		}
+		if zr.App != "" {
+			extras["app"] = zr.App
+		}
+		if zr.Service != "" {
+			extras["service"] = zr.Service
+		}
+		if zr.Banner != "" {
+			extras["banner"] = zr.Banner
+		}
+		if zr.Country != "" {
+			extras["country"] = zr.Country
+		}
+		if zr.Province != "" {
+			extras["province"] = zr.Province
+		}
+		if zr.City != "" {
+			extras["city"] = zr.City
+		}
+		if len(extras) > 0 {
+			sourceResult.Extras = extras
+		}
 
-		raw, _ := json.Marshal(result)
+		raw, _ := json.Marshal(zr)
 		sourceResult.Raw = raw
 		results <- sourceResult
 	}
