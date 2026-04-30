@@ -3,8 +3,8 @@ package censys
 import (
 	"context"
 	"encoding/json"
-
 	"errors"
+	"strconv"
 
 	censyssdkgo "github.com/censys/censys-sdk-go"
 	"github.com/censys/censys-sdk-go/models/components"
@@ -94,22 +94,39 @@ func (agent *Agent) query(session *sources.Session, s *censyssdkgo.SDK, censysRe
 		for _, censysResult := range result.Hits {
 
 			for _, host := range censysResult.WebpropertyV1.Resource.Endpoints {
-				result := sources.Result{Source: agent.Name()}
+				r := sources.Result{Source: agent.Name()}
 				if host.IP != nil {
-					result.IP = *host.IP
+					r.IP = *host.IP
 				}
 				if host.Hostname != nil {
-					result.Host = *host.Hostname
+					r.Host = *host.Hostname
 				}
 				if host.Port != nil {
-					result.Port = *host.Port
+					r.Port = *host.Port
 				}
 				if host.HTTP != nil && host.HTTP.URI != nil {
-					result.Url = *host.HTTP.URI
+					r.Url = *host.HTTP.URI
 				}
+
+				extras := map[string]string{}
+				if host.HTTP != nil {
+					if host.HTTP.HTMLTitle != nil && *host.HTTP.HTMLTitle != "" {
+						extras["http.title"] = *host.HTTP.HTMLTitle
+					}
+					if host.HTTP.StatusCode != nil && *host.HTTP.StatusCode > 0 {
+						extras["http.status_code"] = strconv.Itoa(*host.HTTP.StatusCode)
+					}
+				}
+				if host.Banner != nil && *host.Banner != "" {
+					extras["banner"] = *host.Banner
+				}
+				if len(extras) > 0 {
+					r.Extras = extras
+				}
+
 				raw, _ := json.Marshal(host)
-				result.Raw = raw
-				results <- result
+				r.Raw = raw
+				results <- r
 			}
 
 		}
