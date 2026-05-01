@@ -15,7 +15,10 @@ import (
 )
 
 const (
-	URL  = "https://quake.360.net/api/v3/search/quake_service"
+	URL = "https://quake.360.net/api/v3/search/quake_service"
+	// Size is Quake's API maximum per-page ceiling. The Query loop
+	// derives the actual per-page size from query.Limit via
+	// sources.ClampPageSize.
 	Size = 100
 )
 
@@ -54,11 +57,12 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		defer close(results)
 
 		numberOfResults := 0
+		pageSize := sources.ClampPageSize(query.Limit, Size)
 
 		for {
 			quakeRequest := &Request{
 				Query:       query.Query,
-				Size:        Size,
+				Size:        pageSize,
 				Start:       numberOfResults,
 				IgnoreCache: IgnoreCache,
 				Latest:      Latest,
@@ -72,13 +76,19 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				break
 			}
 
-			if numberOfResults > query.Limit || len(quakeResponse.Data) == 0 {
+			if len(quakeResponse.Data) == 0 {
 				break
 			}
 
 			numberOfResults += len(quakeResponse.Data)
 
-			// early exit without more results
+			// Stop after consuming this page if we've reached the requested
+			// limit or exhausted the upstream total. Increment-then-check
+			// (with >=) avoids the prior off-by-one where an extra page was
+			// always fetched after the limit had been reached.
+			if numberOfResults >= query.Limit {
+				break
+			}
 			if quakeResponse.Meta.Pagination.Count > 0 && numberOfResults >= quakeResponse.Meta.Pagination.Total {
 				break
 			}

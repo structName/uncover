@@ -50,8 +50,11 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				totalResults = shodanResponse.Total
 			}
 
-			// query certificates
-			if numberOfResults > query.Limit || numberOfResults > totalResults || len(shodanResponse.Results) == 0 {
+			// Shodan's /shodan/host/search returns a fixed 100 per page; the
+			// API has no page_size knob. We can only tune *when* to stop
+			// paging. Use >= (not >) so we do not request an extra page once
+			// the requested Limit / Total has been reached.
+			if numberOfResults >= query.Limit || numberOfResults >= totalResults || len(shodanResponse.Results) == 0 {
 				break
 			}
 		}

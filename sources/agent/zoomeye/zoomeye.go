@@ -13,6 +13,10 @@ import (
 
 var (
 	URL = "https://api.zoomeye.ai/v2/search"
+	// MaxPageSize is ZoomEye v2's documented per-page ceiling. The Query
+	// loop derives the actual per-page size from query.Limit via
+	// sources.ClampPageSize.
+	MaxPageSize = 100
 )
 
 type Agent struct{}
@@ -37,12 +41,13 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		defer close(results)
 
 		currentPage := 1
+		pageSize := sources.ClampPageSize(query.Limit, MaxPageSize)
 		var numberOfResults, totalResults int
 		for {
 			zoomeyeRequest := &ZoomEyeRequest{
 				Query:    query.Query,
 				Page:     currentPage,
-				PageSize: 100,
+				PageSize: pageSize,
 			}
 
 			zoomeyeResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, zoomeyeRequest, results)

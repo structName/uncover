@@ -20,6 +20,9 @@ const (
 )
 
 var (
+	// Size is Hunter's API maximum per-page ceiling. Kept exported for
+	// backwards compatibility; the Query loop derives the actual per-page
+	// size from query.Limit via sources.ClampPageSize.
 	Size       = 100
 	StatusCode = ""
 	PortFilter = false
@@ -62,12 +65,13 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 		numberOfResults := 0
 		page := 1
+		pageSize := sources.ClampPageSize(query.Limit, Size)
 		for {
 			hunterRequest := &Request{
 				ApiKey:     session.Keys.HunterToken,
 				Search:     query.Query,
 				Page:       page,
-				PageSize:   Size,
+				PageSize:   pageSize,
 				StatusCode: StatusCode,
 				PortFilter: PortFilter,
 				IsWeb:      IsWeb,
@@ -101,16 +105,19 @@ func (agent *Agent) query(URL string, session *sources.Session, hunterRequest *R
 	}
 
 	hunterResponse := &Response{}
-	RespBodyByBodyBytes, _ := io.ReadAll(resp.Body)
-	if err := json.NewDecoder(resp.Body).Decode(hunterResponse); err != nil {
-		result := sources.Result{Source: agent.Name()}
-		defer func(Body io.ReadCloser) {
-			if bodyCloseErr := Body.Close(); bodyCloseErr != nil {
-				gologger.Info().Msgf("response body close error : %v", bodyCloseErr)
-			}
-		}(resp.Body)
-		raw, _ := json.Marshal(RespBodyByBodyBytes)
-		result.Raw = raw
+	respBodyBytes, readErr := io.ReadAll(resp.Body)
+	defer func() {
+		if bodyCloseErr := resp.Body.Close(); bodyCloseErr != nil {
+			gologger.Info().Msgf("response body close error : %v", bodyCloseErr)
+		}
+	}()
+	if readErr != nil {
+		results <- sources.Result{Source: agent.Name(), Error: readErr}
+		return nil
+	}
+	if err := json.Unmarshal(respBodyBytes, hunterResponse); err != nil {
+		result := sources.Result{Source: agent.Name(), Error: err}
+		result.Raw = respBodyBytes
 		results <- result
 		return nil
 	}

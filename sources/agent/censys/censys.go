@@ -14,6 +14,10 @@ import (
 
 const (
 	MaxPerPage = 100
+	// DefaultBaseURL is the default Censys API base URL. The Query method
+	// resolves session.BaseURLs["censys"] to override it (used in tests
+	// against httptest servers and in staging environments).
+	DefaultBaseURL = "https://api.platform.censys.io"
 )
 
 type Agent struct{}
@@ -28,13 +32,15 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 	}
 
 	// Create the Censys SDK client once
-	s := censyssdkgo.New(
+	sdkOpts := []censyssdkgo.SDKOption{
 		censyssdkgo.WithOrganizationID(session.Keys.CensysOrgId),
 		censyssdkgo.WithSecurity(session.Keys.CensysToken),
-		censyssdkgo.WithClient(
-			session.Client.HTTPClient,
-		),
-	)
+		censyssdkgo.WithClient(session.Client.HTTPClient),
+	}
+	if baseURL := session.ResolveURL(agent.Name(), DefaultBaseURL); baseURL != DefaultBaseURL {
+		sdkOpts = append(sdkOpts, censyssdkgo.WithServerURL(baseURL))
+	}
+	s := censyssdkgo.New(sdkOpts...)
 
 	results := make(chan sources.Result)
 
@@ -42,11 +48,12 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		defer close(results)
 
 		var numberOfResults int
+		perPage := sources.ClampPageSize(query.Limit, MaxPerPage)
 		nextCursor := ""
 		for {
 			censysRequest := &CensysRequest{
 				Query:   query.Query,
-				PerPage: MaxPerPage,
+				PerPage: perPage,
 				Cursor:  nextCursor,
 			}
 			censysResponse := agent.query(session, s, censysRequest, results)
@@ -57,12 +64,18 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 			if censysResponse.ResponseEnvelopeSearchQueryResponse.Result != nil && censysResponse.ResponseEnvelopeSearchQueryResponse.Result.NextPageToken != "" {
 				hasNextCursor = true
 			}
+			if censysResponse.ResponseEnvelopeSearchQueryResponse.Result == nil || len(censysResponse.ResponseEnvelopeSearchQueryResponse.Result.Hits) == 0 {
+				break
+			}
 
-			if !hasNextCursor || numberOfResults > query.Limit || len(censysResponse.ResponseEnvelopeSearchQueryResponse.Result.Hits) == 0 {
+			// Increment-then-check (with >=) avoids the prior off-by-one
+			// where the break used the pre-increment value, causing one
+			// extra page to be fetched after the limit had been reached.
+			numberOfResults += len(censysResponse.ResponseEnvelopeSearchQueryResponse.Result.Hits)
+			if !hasNextCursor || numberOfResults >= query.Limit {
 				break
 			}
 			nextCursor = censysResponse.ResponseEnvelopeSearchQueryResponse.Result.NextPageToken
-			numberOfResults += len(censysResponse.ResponseEnvelopeSearchQueryResponse.Result.Hits)
 		}
 	}()
 

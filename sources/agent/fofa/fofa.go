@@ -38,16 +38,6 @@ var (
 	Full = false
 )
 
-// clampPageSize returns the per-page Size to send to FOFA: capped by
-// MaxPageSize and lowered to query.Limit when the caller wants fewer
-// results than a default page would supply.
-func clampPageSize(limit int) int {
-	if limit > 0 && limit < MaxPageSize {
-		return limit
-	}
-	return MaxPageSize
-}
-
 type Agent struct{}
 
 func (agent *Agent) Name() string {
@@ -66,7 +56,7 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 		var numberOfResults int
 		page := 1
-		pageSize := clampPageSize(query.Limit)
+		pageSize := sources.ClampPageSize(query.Limit, MaxPageSize)
 		for {
 			fofaRequest := &FofaRequest{
 				Query:  query.Query,
