@@ -27,7 +27,7 @@ var (
 	Latest      = true
 	StartTime   = ""
 	EndTime     = ""
-	Include = []string{
+	Include     = []string{
 		"ip", "port", "hostname",
 		"service.name",
 		"service.banner",
@@ -58,6 +58,7 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 		numberOfResults := 0
 		pageSize := sources.ClampPageSize(query.Limit, Size)
+		include := resolveInclude(query.Include)
 
 		for {
 			quakeRequest := &Request{
@@ -68,7 +69,7 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				Latest:      Latest,
 				StartTime:   StartTime,
 				EndTime:     EndTime,
-				Include:     Include,
+				Include:     include,
 			}
 			quakeResponse := agent.query(session.ResolveURL(agent.Name(), URL), session, quakeRequest, results)
 
@@ -96,6 +97,24 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 	}()
 
 	return results, nil
+}
+
+// resolveInclude prefers request-scoped include; empty falls back to package default.
+func resolveInclude(requestInclude []string) []string {
+	if len(requestInclude) == 0 {
+		return append([]string(nil), Include...)
+	}
+	out := make([]string, 0, len(requestInclude))
+	for _, f := range requestInclude {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return append([]string(nil), Include...)
+	}
+	return out
 }
 
 func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Request, results chan sources.Result) *Response {

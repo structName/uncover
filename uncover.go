@@ -42,6 +42,10 @@ type Options struct {
 	RateLimit     uint          // default 30 req
 	RateLimitUnit time.Duration // default unit
 	Proxy         string        // http proxy to use with uncover
+	// Request-scoped FOFA fields (comma-separated). Empty → agent package default.
+	Fields string
+	// Request-scoped Quake include list. Empty → agent package default.
+	Include []string
 }
 
 // Service handler of all uncover Agents
@@ -181,8 +185,10 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 			}
 			session := s.Session.CloneWithKeys(&keys)
 			ch, err := agent.Query(session, &sources.Query{
-				Query: q,
-				Limit: s.Options.Limit,
+				Query:   q,
+				Limit:   s.Options.Limit,
+				Fields:  s.Options.Fields,
+				Include: append([]string(nil), s.Options.Include...),
 			})
 			if err != nil {
 				gologger.Error().Msgf("%s\n", err)

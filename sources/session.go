@@ -43,6 +43,20 @@ type Session struct {
 	RateLimits *ratelimit.MultiLimiter
 }
 
+// UseHTTPClient replaces the default transport with a caller-provided
+// policy-enforcing *http.Client (e.g. security/outbound factory).
+func (s *Session) UseHTTPClient(client *http.Client, retryMax int, timeoutSec int) {
+	if s == nil || client == nil {
+		return
+	}
+	options := retryablehttp.Options{RetryMax: retryMax}
+	if timeoutSec > 0 {
+		options.RetryWaitMax = time.Duration(timeoutSec) * time.Second
+	}
+	s.Client = retryablehttp.NewWithHTTPClient(client, options)
+	s.RetryMax = retryMax
+}
+
 func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, duration time.Duration, proxy string) (*Session, error) {
 	Transport := &http.Transport{
 		MaxIdleConns:        100,

@@ -57,10 +57,11 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		var numberOfResults int
 		page := 1
 		pageSize := sources.ClampPageSize(query.Limit, MaxPageSize)
+		fields := resolveFields(query.Fields)
 		for {
 			fofaRequest := &FofaRequest{
 				Query:  query.Query,
-				Fields: Fields,
+				Fields: fields,
 				Size:   pageSize,
 				Page:   page,
 				Full:   Full,
@@ -82,11 +83,17 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 	return results, nil
 }
 
-func (agent *Agent) queryURL(session *sources.Session, URL string, fofaRequest *FofaRequest) (*http.Response, error) {
-	fields := strings.TrimSpace(fofaRequest.Fields)
-	if fields == "" {
-		fields = Fields
+// resolveFields prefers the request-scoped fields parameter; empty falls back
+// to the package default so legacy callers keep working.
+func resolveFields(requestFields string) string {
+	if f := strings.TrimSpace(requestFields); f != "" {
+		return f
 	}
+	return Fields
+}
+
+func (agent *Agent) queryURL(session *sources.Session, URL string, fofaRequest *FofaRequest) (*http.Response, error) {
+	fields := resolveFields(fofaRequest.Fields)
 	base64Query := base64.StdEncoding.EncodeToString([]byte(fofaRequest.Query))
 	fofaURL := fmt.Sprintf(
 		URL,
