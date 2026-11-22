@@ -57,6 +57,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		}
 
 		for !done {
+			if session.Context().Err() != nil {
+				break
+			}
 			req := &Request{
 				Query:      query.Query,
 				Size:       pageSize,
@@ -66,7 +69,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 			apiResponse, err := agent.query(session, req)
 			if err != nil {
-				results <- sources.Result{Source: agent.Name(), Error: err}
+				if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+					return
+				}
 				return
 			}
 			if apiResponse == nil || len(apiResponse.Data) == 0 {
@@ -77,7 +82,7 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				hosts := collectHostnamesFromItem(item)
 				ports := collectPortsFromItem(item)
 
-				emit := func(h string, p int) {
+				emit := func(h string, p int) bool {
 					r := sources.Result{
 						Source: agent.Name(),
 						IP:     item.IP,
@@ -87,17 +92,24 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 					if raw, err := json.Marshal(item); err == nil {
 						r.Raw = raw
 					}
-					results <- r
+					if !session.SendResult(results, r) {
+						return false
+					}
 					total++
+					return true
 				}
 
 				switch {
 				case len(hosts) == 0 && len(ports) == 0:
-					emit("", 0)
+					if !emit("", 0) {
+						return
+					}
 
 				case len(hosts) == 0 && len(ports) > 0:
 					for _, p := range ports {
-						emit("", p)
+						if !emit("", p) {
+							return
+						}
 						if query.Limit > 0 && total >= query.Limit {
 							done = true
 							break
@@ -106,7 +118,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 
 				case len(hosts) > 0 && len(ports) == 0:
 					for _, h := range hosts {
-						emit(h, 0)
+						if !emit(h, 0) {
+							return
+						}
 						if query.Limit > 0 && total >= query.Limit {
 							done = true
 							break
@@ -116,7 +130,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 				default:
 					for _, h := range hosts {
 						for _, p := range ports {
-							emit(h, p)
+							if !emit(h, p) {
+								return
+							}
 							if query.Limit > 0 && total >= query.Limit {
 								done = true
 								break

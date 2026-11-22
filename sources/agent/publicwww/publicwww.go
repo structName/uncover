@@ -35,6 +35,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		numberOfResults := 0
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			publicwwwRequest := &Request{
 				Query: query.Query,
 			}
@@ -63,13 +66,17 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(URL string, session *sources.Session, results chan sources.Result) []string {
 	resp, err := agent.queryURL(session, URL)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	content := string(body)
@@ -83,7 +90,9 @@ func (agent *Agent) query(URL string, session *sources.Session, results chan sou
 			if err == io.EOF {
 				break
 			}
-			results <- sources.Result{Source: agent.Name(), Error: err}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+				return nil
+			}
 		}
 
 		result := sources.Result{Source: agent.Name()}
@@ -92,14 +101,18 @@ func (agent *Agent) query(URL string, session *sources.Session, results chan sou
 			if trimmedLine != "" {
 				hostname, err := sources.GetHostname(record[0])
 				if err != nil {
-					results <- sources.Result{Source: agent.Name(), Error: err}
+					if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+						return nil
+					}
 					continue
 				}
 				result.Host = hostname
 				result.Url = record[0]
 				raw, _ := json.Marshal(record)
 				result.Raw = raw
-				results <- result
+				if !session.SendResult(results, result) {
+					return nil
+				}
 				lines = append(lines, trimmedLine)
 			}
 		}

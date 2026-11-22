@@ -35,6 +35,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		pageQuery := 1
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			hunterhowRequest := &Request{
 				Query:    query.Query,
 				PageSize: Size, // max size is 100
@@ -66,18 +69,24 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(URL string, session *sources.Session, results chan sources.Result) []string {
 	resp, err := agent.queryURL(session, URL)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	var apiResponse Response
 	err = json.NewDecoder(resp.Body).Decode(&apiResponse)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	if apiResponse.Code != http.StatusOK {
-		results <- sources.Result{Source: agent.Name(), Error: errors.New(apiResponse.Message)}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: errors.New(apiResponse.Message)}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -89,7 +98,9 @@ func (agent *Agent) query(URL string, session *sources.Session, results chan sou
 		result.Port = data.Port
 		raw, _ := json.Marshal(data)
 		result.Raw = raw
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 		lines = append(lines, data.Domain)
 	}
 

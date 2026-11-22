@@ -61,6 +61,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		include := resolveInclude(query.Include)
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			quakeRequest := &Request{
 				Query:       query.Query,
 				Size:        pageSize,
@@ -120,14 +123,18 @@ func resolveInclude(requestInclude []string) []string {
 func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Request, results chan sources.Result) *Response {
 	resp, err := agent.queryURL(session, URL, quakeRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	quakeResponse := &Response{}
 	respdata, err := io.ReadAll(resp.Body)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: fmt.Errorf("%v: %v", err, string(respdata))}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: fmt.Errorf("%v: %v", err, string(respdata))}) {
+			return nil
+		}
 		return nil
 	}
 	if err := json.NewDecoder(bytes.NewReader(respdata)).Decode(quakeResponse); err != nil {
@@ -139,7 +146,9 @@ func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Re
 		} else {
 			errx = errx.Msgf("failed to decode quake response: %s", string(respdata))
 		}
-		results <- sources.Result{Source: agent.Name(), Error: errx}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: errx}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -188,7 +197,9 @@ func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Re
 
 		raw, _ := json.Marshal(qr)
 		result.Raw = raw
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 	}
 
 	return quakeResponse

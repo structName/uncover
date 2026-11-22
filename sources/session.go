@@ -61,6 +61,24 @@ func (s *Session) Context() context.Context {
 	return context.Background()
 }
 
+func (s *Session) SendResult(results chan<- Result, res Result) bool {
+	if results == nil {
+		return false
+	}
+	ctx := s.Context()
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+	}
+	select {
+	case results <- res:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // UseHTTPClient replaces the default transport with a caller-provided
 // policy-enforcing *http.Client (e.g. security/outbound factory).
 func (s *Session) UseHTTPClient(client *http.Client, retryMax int, timeoutSec int) {
@@ -169,6 +187,9 @@ func (s *Session) Do(request *retryablehttp.Request, source string) (*http.Respo
 	}
 	err := s.RateLimits.Take(source)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Context().Err(); err != nil {
 		return nil, err
 	}
 	if s.ctx != nil && request != nil && request.Context() == context.Background() {

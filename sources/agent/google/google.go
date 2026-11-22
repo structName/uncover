@@ -42,6 +42,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		}
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			googleRequest := &Request{
 				SearchTerms: escapedQuery,
 				Count:       size,
@@ -73,7 +76,9 @@ func (agent *Agent) query(session *sources.Session, googleRequest *Request, resu
 
 	resp, err := agent.queryURL(session, googleRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -81,7 +86,9 @@ func (agent *Agent) query(session *sources.Session, googleRequest *Request, resu
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gzipReader, errGzip := gzip.NewReader(resp.Body)
 		if errGzip != nil {
-			results <- sources.Result{Source: agent.Name(), Error: errGzip}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: errGzip}) {
+				return nil
+			}
 			return nil
 		}
 		defer func() {
@@ -89,12 +96,16 @@ func (agent *Agent) query(session *sources.Session, googleRequest *Request, resu
 		}()
 
 		if errDecode := json.NewDecoder(gzipReader).Decode(&apiResponse); errDecode != nil {
-			results <- sources.Result{Source: agent.Name(), Error: errDecode}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: errDecode}) {
+				return nil
+			}
 			return nil
 		}
 	} else {
 		if errDecode := json.NewDecoder(resp.Body).Decode(&apiResponse); errDecode != nil {
-			results <- sources.Result{Source: agent.Name(), Error: errDecode}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: errDecode}) {
+				return nil
+			}
 			return nil
 		}
 	}
@@ -108,7 +119,9 @@ func (agent *Agent) query(session *sources.Session, googleRequest *Request, resu
 			result.IP = googleResult.Link
 			raw, _ := json.Marshal(googleResult)
 			result.Raw = raw
-			results <- result
+			if !session.SendResult(results, result) {
+				return nil
+			}
 			lines = append(lines, googleResult.Link)
 		}
 	}

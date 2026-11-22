@@ -33,6 +33,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		numberOfResults := 0
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			netlasRequest := &Request{
 				Query: query.Query,
 				Start: numberOfResults,
@@ -58,13 +61,17 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(URL string, session *sources.Session, results chan sources.Result) *Response {
 	resp, err := agent.queryURL(session, URL)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	netlasResponse := &Response{}
 	if err := json.NewDecoder(resp.Body).Decode(netlasResponse); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -75,7 +82,9 @@ func (agent *Agent) query(URL string, session *sources.Session, results chan sou
 		result.Host = netlasResult.Data.Host
 		raw, _ := json.Marshal(netlasResult)
 		result.Raw = raw
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 	}
 
 	return netlasResponse

@@ -93,6 +93,9 @@ ENDPOINT_LOOP:
 	for _, apiEndpoint := range []string{ProtocolURL, DomainsURL} {
 		// Paginate up to the API endpoint max page limit
 		for currentPage := 0; currentPage < PageMaxLimit; currentPage++ {
+			if session.Context().Err() != nil {
+				return
+			}
 			// Set the page
 			driftnetRequest.Page = currentPage
 
@@ -107,7 +110,9 @@ ENDPOINT_LOOP:
 				}
 
 				// Some non 204 error
-				results <- sources.Result{Source: agent.Name(), Error: queryError}
+				if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: queryError}) {
+					return
+				}
 				return
 			}
 			defer func() {
@@ -117,7 +122,9 @@ ENDPOINT_LOOP:
 			// Parse the response
 			driftnetResponse := &DriftnetAPIPaginatedResponse{}
 			if err := json.NewDecoder(resp.Body).Decode(driftnetResponse); err != nil {
-				results <- sources.Result{Source: agent.Name(), Error: err}
+				if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+					return
+				}
 				return
 			}
 
@@ -150,7 +157,9 @@ ENDPOINT_LOOP:
 				if len(port) > 0 && len(ip) > 0 {
 					portAsInt, conversionError := strconv.Atoi(port)
 					if conversionError != nil {
-						results <- sources.Result{Source: agent.Name(), Error: conversionError}
+						if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: conversionError}) {
+							return
+						}
 						// Move onto the next driftnet result
 						continue
 					}
@@ -164,7 +173,9 @@ ENDPOINT_LOOP:
 
 					result.Raw, _ = json.Marshal(result)
 
-					results <- result
+					if !session.SendResult(results, result) {
+						return
+					}
 					// If we reported a result we add this to the count
 					totalReportedResults += 1
 				}
@@ -202,7 +213,9 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 	// hence if we have a CIDR > /22 we will split it and iterate over CIDRs
 	requestCIDRs, splitError := mapcidr.SplitByNumber(targetCIDR, 1024)
 	if splitError != nil {
-		results <- sources.Result{Source: agent.Name(), Error: splitError}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: splitError}) {
+			return
+		}
 		return
 	}
 
@@ -210,6 +223,9 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 	// totalReportedResults keeps track of how many results we have found
 	totalReportedResults := 0
 	for _, requestCIDR := range requestCIDRs {
+		if session.Context().Err() != nil {
+			return
+		}
 		// Set the current /22 as the query target
 		driftnetRequest.Query = requestCIDR.String()
 
@@ -223,7 +239,9 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 				continue
 			}
 
-			results <- sources.Result{Source: agent.Name(), Error: queryError}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: queryError}) {
+				return
+			}
 			return
 		}
 		defer func() {
@@ -232,7 +250,9 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 
 		driftnetResponse := &DriftnetAPIOpenIPPortResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(driftnetResponse); err != nil {
-			results <- sources.Result{Source: agent.Name(), Error: err}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+				return
+			}
 			return
 		}
 
@@ -243,7 +263,9 @@ func (agent *Agent) queryIPCIDR(session *sources.Session, driftnetRequest *Drift
 			// Iterate over summarised ports and report as we go, the API limited to 100 ports per IP address.
 			for port := range portsResponse.Values {
 				result.Port = port
-				results <- result
+				if !session.SendResult(results, result) {
+					return
+				}
 
 				// Add one to the count of reported items
 				totalReportedResults += 1

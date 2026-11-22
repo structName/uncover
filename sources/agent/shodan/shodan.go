@@ -34,6 +34,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		currentPage := 1
 		var numberOfResults, totalResults int
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			shodanRequest := &ShodanRequest{
 				Query: query.Query,
 				Page:  currentPage,
@@ -76,13 +79,17 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 	// query certificates
 	resp, err := agent.queryURL(session, URL, shodanRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	shodanResponse := &ShodanResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(shodanResponse); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -134,7 +141,9 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 
 		raw, _ := json.Marshal(shodanResult)
 		result.Raw = raw
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 	}
 
 	return shodanResponse

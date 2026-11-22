@@ -51,6 +51,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		perPage := sources.ClampPageSize(query.Limit, MaxPerPage)
 		nextCursor := ""
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			censysRequest := &CensysRequest{
 				Query:   query.Query,
 				PerPage: perPage,
@@ -101,7 +104,9 @@ func (agent *Agent) query(session *sources.Session, s *censyssdkgo.SDK, censysRe
 	// query certificates
 	resp, err := agent.queryURL(session, s, censysRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		// httputil.DrainResponseBody(resp)
 		return nil
 	}
@@ -142,7 +147,9 @@ func (agent *Agent) query(session *sources.Session, s *censyssdkgo.SDK, censysRe
 
 				raw, _ := json.Marshal(host)
 				r.Raw = raw
-				results <- r
+				if !session.SendResult(results, r) {
+					return nil
+				}
 			}
 
 		}

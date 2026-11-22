@@ -161,6 +161,9 @@ func buildAgents(agentNames []string) []sources.Agent {
 }
 
 func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// unlikely but as a precaution to handle random panics check all types
 	if err := s.nilCheck(); err != nil {
 		return nil, err
@@ -175,9 +178,16 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	megaChan := make(chan sources.Result, DefaultChannelBuffSize)
 	// iterate and run all sources
 	wg := &sync.WaitGroup{}
+queryLoop:
 	for _, q := range s.Options.Queries {
+		if ctx.Err() != nil {
+			break queryLoop
+		}
 	agentLabel:
 		for _, agent := range s.Agents {
+			if ctx.Err() != nil {
+				break queryLoop
+			}
 			keys := s.resolveKeysForAgent()
 			if keys.Empty() && agent.Name() != "shodan-idb" {
 				gologger.Error().Msgf(agent.Name(), "agent given but keys not found")
@@ -197,16 +207,34 @@ func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 			wg.Add(1)
 			go func(source, relay chan sources.Result, ctx context.Context) {
 				defer wg.Done()
+				drain := func() {
+					go func(ch <-chan sources.Result) {
+						for range ch {
+						}
+					}(source)
+				}
 				for {
 					select {
 					case <-ctx.Done():
+						drain()
 						return
 					case res, ok := <-source:
-						res.Timestamp = time.Now().Unix()
 						if !ok {
 							return
 						}
-						relay <- res
+						res.Timestamp = time.Now().Unix()
+						select {
+						case <-ctx.Done():
+							drain()
+							return
+						default:
+						}
+						select {
+						case relay <- res:
+						case <-ctx.Done():
+							drain()
+							return
+						}
 					}
 				}
 			}(ch, megaChan, ctx)

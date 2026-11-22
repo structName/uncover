@@ -153,3 +153,23 @@ func TestUseHTTPClientTimeoutAbortsWithoutMutatingCaller(t *testing.T) {
 	require.Nil(t, resp2)
 	require.Less(t, elapsed2, 2500*time.Millisecond)
 }
+
+func TestSendResultHonorsContextDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := (&Session{}).WithContext(ctx)
+
+	ch := make(chan Result, 1)
+	require.True(t, s.SendResult(ch, Result{Source: "fofa", IP: "1.1.1.1"}))
+	got := <-ch
+	require.Equal(t, "1.1.1.1", got.IP)
+
+	cancel()
+	require.False(t, s.SendResult(ch, Result{Source: "fofa", IP: "2.2.2.2"}))
+	require.Empty(t, ch)
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel2()
+	s2 := (&Session{}).WithContext(ctx2)
+	unbuffered := make(chan Result)
+	require.False(t, s2.SendResult(unbuffered, Result{Source: "fofa", IP: "3.3.3.3"}))
+}

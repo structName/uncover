@@ -42,6 +42,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		maxResults := query.Limit
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			onypheRequest := &OnypheRequest{
 				Query: query.Query,
 				Page:  currentPage,
@@ -68,7 +71,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(session *sources.Session, onypheRequest OnypheRequest, results chan sources.Result) *OnypheResponse {
 	resp, err := agent.queryURL(session, &onypheRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	defer func() {
@@ -77,27 +82,35 @@ func (agent *Agent) query(session *sources.Session, onypheRequest OnypheRequest,
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	var apiResponse OnypheResponse
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
 	// Check if the API returned an error
 	if apiResponse.Error != 0 {
-		results <- sources.Result{Source: agent.Name(), Error: fmt.Errorf("API error code: %d", apiResponse.Error)}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: fmt.Errorf("API error code: %d", apiResponse.Error)}) {
+			return nil
+		}
 		return nil
 	}
 
 	for _, result := range apiResponse.Results {
-		results <- sources.Result{
+		if !session.SendResult(results, sources.Result{
 			Source: agent.Name(),
 			IP:     result.IP,
 			Port:   result.Port,
+		}) {
+			return nil
 		}
 	}
 	return &apiResponse

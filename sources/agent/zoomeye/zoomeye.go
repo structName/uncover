@@ -44,6 +44,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		pageSize := sources.ClampPageSize(query.Limit, MaxPageSize)
 		var numberOfResults, totalResults int
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			zoomeyeRequest := &ZoomEyeRequest{
 				Query:    query.Query,
 				Page:     currentPage,
@@ -97,7 +100,9 @@ func (agent *Agent) queryURL(session *sources.Session, URL string, zoomeyeReques
 func (agent *Agent) query(URL string, session *sources.Session, zoomeyeRequest *ZoomEyeRequest, results chan sources.Result) *ZoomEyeResponse {
 	resp, err := agent.queryURL(session, URL, zoomeyeRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	defer func() {
@@ -106,7 +111,9 @@ func (agent *Agent) query(URL string, session *sources.Session, zoomeyeRequest *
 
 	zoomeyeResponse := &ZoomEyeResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(zoomeyeResponse); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -148,7 +155,9 @@ func (agent *Agent) query(URL string, session *sources.Session, zoomeyeRequest *
 
 		raw, _ := json.Marshal(zr)
 		sourceResult.Raw = raw
-		results <- sourceResult
+		if !session.SendResult(results, sourceResult) {
+			return nil
+		}
 	}
 
 	return zoomeyeResponse

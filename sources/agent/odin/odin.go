@@ -40,6 +40,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		var startCursor []float64
 
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			reqBody := OdinRequest{
 				Limit: query.Limit,
 				Query: query.Query,
@@ -72,14 +75,18 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(session *sources.Session, odinReq *OdinRequest, results chan sources.Result) *OdinResponse {
 	reqBody, err := json.Marshal(odinReq)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: fmt.Errorf("failed to marshal request: %v", err)}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: fmt.Errorf("failed to marshal request: %v", err)}) {
+			return nil
+		}
 		return nil
 	}
 
 	httpReq, err := sources.NewHTTPRequest(http.MethodPost, session.ResolveURL(agent.Name(), OdinAPIURL), bytes.NewReader(reqBody))
 
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -88,7 +95,9 @@ func (agent *Agent) query(session *sources.Session, odinReq *OdinRequest, result
 
 	resp, err := session.Do(httpReq, agent.Name())
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	defer func() {
@@ -97,7 +106,9 @@ func (agent *Agent) query(session *sources.Session, odinReq *OdinRequest, result
 
 	var odinResp OdinResponse
 	if err := json.NewDecoder(resp.Body).Decode(&odinResp); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: fmt.Errorf("failed to decode odin response: %v", err)}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: fmt.Errorf("failed to decode odin response: %v", err)}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -111,7 +122,9 @@ func (agent *Agent) query(session *sources.Session, odinReq *OdinRequest, result
 			rawBytes, _ := json.Marshal(host)
 			result.Raw = rawBytes
 
-			results <- result
+			if !session.SendResult(results, result) {
+				return nil
+			}
 		}
 	}
 

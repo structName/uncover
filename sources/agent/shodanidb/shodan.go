@@ -62,20 +62,29 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 	}
 	ipChan, err := mapcidr.IPAddressesAsStream(query)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return
+		}
 		return
 	}
 	for ip := range ipChan {
+		if session.Context().Err() != nil {
+			return
+		}
 		resp, err := agent.queryURL(session, session.ResolveURL(agent.Name(), URL), &ShodanRequest{Query: ip})
 
 		if err != nil {
-			results <- sources.Result{Source: agent.Name(), Error: err}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+				return
+			}
 			continue
 		}
 
 		shodanResponse := &ShodanResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(shodanResponse); err != nil {
-			results <- sources.Result{Source: agent.Name(), Error: err}
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+				return
+			}
 			continue
 		}
 
@@ -84,10 +93,14 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 		result.Raw, _ = json.Marshal(shodanResponse)
 		for _, port := range shodanResponse.Ports {
 			result.Port = port
-			results <- result
+			if !session.SendResult(results, result) {
+				return
+			}
 			for _, hostname := range shodanResponse.Hostnames {
 				result.Host = hostname
-				results <- result
+				if !session.SendResult(results, result) {
+					return
+				}
 			}
 		}
 	}

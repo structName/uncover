@@ -59,6 +59,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		pageSize := sources.ClampPageSize(query.Limit, MaxPageSize)
 		fields := resolveFields(query.Fields)
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			fofaRequest := &FofaRequest{
 				Query:  query.Query,
 				Fields: fields,
@@ -115,7 +118,9 @@ func (agent *Agent) queryURL(session *sources.Session, URL string, fofaRequest *
 func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *FofaRequest, results chan sources.Result) *FofaResponse {
 	resp, err := agent.queryURL(session, URL, fofaRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 	defer func(Body io.ReadCloser) {
@@ -127,7 +132,9 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 	fofaResponse := &FofaResponse{}
 	respBodyBytes, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		results <- sources.Result{Source: agent.Name(), Error: readErr}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: readErr}) {
+			return nil
+		}
 		return nil
 	}
 	if err := json.Unmarshal(respBodyBytes, fofaResponse); err != nil {
@@ -136,11 +143,15 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 			Raw:    respBodyBytes,
 			Error:  fmt.Errorf("failed to decode fofa response: %w", err),
 		}
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 		return nil
 	}
 	if fofaResponse.Error {
-		results <- sources.Result{Source: agent.Name(), Error: fmt.Errorf("%s", fofaResponse.ErrMsg)}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: fmt.Errorf("%s", fofaResponse.ErrMsg)}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -176,7 +187,9 @@ func (agent *Agent) query(URL string, session *sources.Session, fofaRequest *Fof
 		}
 		raw, _ := json.Marshal(fofaResult)
 		result.Raw = raw
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 	}
 	return fofaResponse
 }

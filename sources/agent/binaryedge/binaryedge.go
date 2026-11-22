@@ -39,7 +39,9 @@ func (agent *Agent) query(session *sources.Session, searchQuery string, results 
 	resp, err := agent.queryURL(session, session.ResolveURL(agent.Name(), URL), searchQuery)
 
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return
+		}
 		return
 	}
 	defer func() {
@@ -48,7 +50,9 @@ func (agent *Agent) query(session *sources.Session, searchQuery string, results 
 
 	var apiResponse BinaryedgeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return
+		}
 		return
 	}
 
@@ -62,7 +66,9 @@ func (agent *Agent) query(session *sources.Session, searchQuery string, results 
 			if raw, err := json.Marshal(item); err == nil {
 				output.Raw = raw
 			}
-			results <- output
+			if !session.SendResult(results, output) {
+				return
+			}
 		}
 	}
 }

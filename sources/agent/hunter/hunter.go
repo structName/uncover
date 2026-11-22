@@ -67,6 +67,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 		page := 1
 		pageSize := sources.ClampPageSize(query.Limit, Size)
 		for {
+			if session.Context().Err() != nil {
+				break
+			}
 			hunterRequest := &Request{
 				ApiKey:     session.Keys.HunterToken,
 				Search:     query.Query,
@@ -100,7 +103,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(URL string, session *sources.Session, hunterRequest *Request, results chan sources.Result) *Response {
 	resp, err := agent.queryURL(session, URL, hunterRequest)
 	if err != nil {
-		results <- sources.Result{Source: agent.Name(), Error: err}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+			return nil
+		}
 		return nil
 	}
 
@@ -112,13 +117,17 @@ func (agent *Agent) query(URL string, session *sources.Session, hunterRequest *R
 		}
 	}()
 	if readErr != nil {
-		results <- sources.Result{Source: agent.Name(), Error: readErr}
+		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: readErr}) {
+			return nil
+		}
 		return nil
 	}
 	if err := json.Unmarshal(respBodyBytes, hunterResponse); err != nil {
 		result := sources.Result{Source: agent.Name(), Error: err}
 		result.Raw = respBodyBytes
-		results <- result
+		if !session.SendResult(results, result) {
+			return nil
+		}
 		return nil
 	}
 	if hunterResponse.Code == http.StatusOK && hunterResponse.Data.Total > 0 {
@@ -160,7 +169,9 @@ func (agent *Agent) query(URL string, session *sources.Session, hunterRequest *R
 
 			raw, _ := json.Marshal(hunterResult)
 			result.Raw = raw
-			results <- result
+			if !session.SendResult(results, result) {
+				return nil
+			}
 		}
 	}
 
