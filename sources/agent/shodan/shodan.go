@@ -78,6 +78,9 @@ func (agent *Agent) queryURL(session *sources.Session, URL string, shodanRequest
 func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *ShodanRequest, results chan sources.Result) *ShodanResponse {
 	// query certificates
 	resp, err := agent.queryURL(session, URL, shodanRequest)
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err != nil {
 		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
 			return nil

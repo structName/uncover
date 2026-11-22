@@ -75,6 +75,9 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 func (agent *Agent) query(session *sources.Session, googleRequest *Request, results chan sources.Result) []string {
 
 	resp, err := agent.queryURL(session, googleRequest)
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err != nil {
 		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
 			return nil

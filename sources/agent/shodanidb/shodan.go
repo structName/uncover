@@ -74,6 +74,9 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 		resp, err := agent.queryURL(session, session.ResolveURL(agent.Name(), URL), &ShodanRequest{Query: ip})
 
 		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
 			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
 				return
 			}
@@ -81,8 +84,10 @@ func (agent *Agent) query(URL string, session *sources.Session, shodanRequest *S
 		}
 
 		shodanResponse := &ShodanResponse{}
-		if err := json.NewDecoder(resp.Body).Decode(shodanResponse); err != nil {
-			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
+		decodeErr := json.NewDecoder(resp.Body).Decode(shodanResponse)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: decodeErr}) {
 				return
 			}
 			continue

@@ -122,6 +122,9 @@ func resolveInclude(requestInclude []string) []string {
 
 func (agent *Agent) query(URL string, session *sources.Session, quakeRequest *Request, results chan sources.Result) *Response {
 	resp, err := agent.queryURL(session, URL, quakeRequest)
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err != nil {
 		if !session.SendResult(results, sources.Result{Source: agent.Name(), Error: err}) {
 			return nil
