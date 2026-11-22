@@ -11,6 +11,7 @@ import (
 	"github.com/projectdiscovery/ratelimit"
 	"github.com/projectdiscovery/retryablehttp-go"
 	errorutil "github.com/projectdiscovery/utils/errors"
+	"golang.org/x/net/http2"
 )
 
 // DefaultRateLimits of all/most of sources are hardcoded by default to improve performance
@@ -54,7 +55,25 @@ func (s *Session) UseHTTPClient(client *http.Client, retryMax int, timeoutSec in
 		options.RetryWaitMax = time.Duration(timeoutSec) * time.Second
 	}
 	s.Client = retryablehttp.NewWithHTTPClient(client, options)
+	if s.Client != nil {
+		s.Client.HTTPClient2 = buildHTTP2FallbackClient(client)
+	}
 	s.RetryMax = retryMax
+}
+
+func buildHTTP2FallbackClient(client *http.Client) *http.Client {
+	tr, ok := client.Transport.(*http.Transport)
+	if !ok || tr == nil {
+		return client
+	}
+	tr2 := tr.Clone()
+	_ = http2.ConfigureTransport(tr2)
+	return &http.Client{
+		Transport:     tr2,
+		CheckRedirect: client.CheckRedirect,
+		Jar:           client.Jar,
+		Timeout:       client.Timeout,
+	}
 }
 
 func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, duration time.Duration, proxy string) (*Session, error) {
