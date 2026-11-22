@@ -64,10 +64,12 @@ func TestUseHTTPClientBindsPolicyHTTPClient2(t *testing.T) {
 	s := &Session{}
 	s.UseHTTPClient(policyClient, 1, 5)
 	require.NotNil(t, s.Client)
-	require.Same(t, policyClient, s.Client.HTTPClient)
+	require.NotSame(t, policyClient, s.Client.HTTPClient)
+	require.Equal(t, 12*time.Second, policyClient.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient.Timeout)
 	require.NotNil(t, s.Client.HTTPClient2)
 	require.NotSame(t, policyClient, s.Client.HTTPClient2)
-	require.Equal(t, 12*time.Second, s.Client.HTTPClient2.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient2.Timeout)
 	require.Equal(t, reflect.ValueOf(redirectFn).Pointer(), reflect.ValueOf(s.Client.HTTPClient2.CheckRedirect).Pointer())
 
 	tr2, ok := s.Client.HTTPClient2.Transport.(*http.Transport)
@@ -86,7 +88,12 @@ func TestUseHTTPClientBindsPolicyHTTPClient2(t *testing.T) {
 
 	customClient := &http.Client{Transport: stubRoundTripper{}, Timeout: 7 * time.Second}
 	s.UseHTTPClient(customClient, 1, 5)
-	require.Same(t, customClient, s.Client.HTTPClient2)
+	require.NotSame(t, customClient, s.Client.HTTPClient)
+	require.NotSame(t, customClient, s.Client.HTTPClient2)
+	require.Same(t, s.Client.HTTPClient, s.Client.HTTPClient2)
+	require.Equal(t, 7*time.Second, customClient.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient2.Timeout)
 
 	alreadyH2 := &http.Transport{DialContext: dialFn}
 	require.NoError(t, http2.ConfigureTransport(alreadyH2))
@@ -96,5 +103,53 @@ func TestUseHTTPClientBindsPolicyHTTPClient2(t *testing.T) {
 	trH2, ok := s.Client.HTTPClient2.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.Equal(t, reflect.ValueOf(dialFn).Pointer(), reflect.ValueOf(trH2.DialContext).Pointer())
+	require.Equal(t, 9*time.Second, h2Client.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient.Timeout)
+	require.Equal(t, 5*time.Second, s.Client.HTTPClient2.Timeout)
+
+	s.UseHTTPClient(h2Client, 1, 0)
+	require.Equal(t, 9*time.Second, s.Client.HTTPClient.Timeout)
 	require.Equal(t, 9*time.Second, s.Client.HTTPClient2.Timeout)
+}
+
+func TestUseHTTPClientTimeoutAbortsWithoutMutatingCaller(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(4 * time.Second):
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	sharedClient := &http.Client{
+		Transport: &http.Transport{},
+		Timeout:   30 * time.Second,
+	}
+	sess, err := NewSession(&Keys{}, 0, 30, 10, []string{"fofa"}, time.Second, "")
+	require.NoError(t, err)
+	sess.UseHTTPClient(sharedClient, 0, 1)
+
+	req, err := retryablehttp.NewRequest(http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+
+	start := time.Now()
+	resp, err := sess.Do(req, "fofa")
+	elapsed := time.Since(start)
+	require.Error(t, err)
+	require.Nil(t, resp)
+	require.Less(t, elapsed, 2500*time.Millisecond)
+	require.Equal(t, 30*time.Second, sharedClient.Timeout)
+	require.Equal(t, 1*time.Second, sess.Client.HTTPClient.Timeout)
+	require.Equal(t, 1*time.Second, sess.Client.HTTPClient2.Timeout)
+
+	req2, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	start2 := time.Now()
+	resp2, err2 := sess.Client.HTTPClient2.Do(req2)
+	elapsed2 := time.Since(start2)
+	require.Error(t, err2)
+	require.Nil(t, resp2)
+	require.Less(t, elapsed2, 2500*time.Millisecond)
 }

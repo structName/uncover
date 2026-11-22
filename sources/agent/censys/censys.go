@@ -82,8 +82,11 @@ func (agent *Agent) Query(session *sources.Session, query *sources.Query) (chan 
 	return results, nil
 }
 
-func (agent *Agent) queryURL(s *censyssdkgo.SDK, censysRequest *CensysRequest) (*operations.V3GlobaldataSearchQueryResponse, error) {
+func (agent *Agent) queryURL(session *sources.Session, s *censyssdkgo.SDK, censysRequest *CensysRequest) (*operations.V3GlobaldataSearchQueryResponse, error) {
 	ctx := context.Background()
+	if session != nil {
+		ctx = session.Context()
+	}
 
 	return s.GlobalData.Search(ctx, operations.V3GlobaldataSearchQueryRequest{
 		SearchQueryInputBody: components.SearchQueryInputBody{
@@ -96,7 +99,7 @@ func (agent *Agent) queryURL(s *censyssdkgo.SDK, censysRequest *CensysRequest) (
 
 func (agent *Agent) query(session *sources.Session, s *censyssdkgo.SDK, censysRequest *CensysRequest, results chan sources.Result) *operations.V3GlobaldataSearchQueryResponse {
 	// query certificates
-	resp, err := agent.queryURL(s, censysRequest)
+	resp, err := agent.queryURL(session, s, censysRequest)
 	if err != nil {
 		results <- sources.Result{Source: agent.Name(), Error: err}
 		// httputil.DrainResponseBody(resp)

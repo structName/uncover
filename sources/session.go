@@ -42,6 +42,23 @@ type Session struct {
 	Client     *retryablehttp.Client
 	RetryMax   int
 	RateLimits *ratelimit.MultiLimiter
+	ctx        context.Context
+}
+
+func (s *Session) WithContext(ctx context.Context) *Session {
+	if s == nil {
+		return nil
+	}
+	clone := *s
+	clone.ctx = ctx
+	return &clone
+}
+
+func (s *Session) Context() context.Context {
+	if s != nil && s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }
 
 // UseHTTPClient replaces the default transport with a caller-provided
@@ -50,13 +67,17 @@ func (s *Session) UseHTTPClient(client *http.Client, retryMax int, timeoutSec in
 	if s == nil || client == nil {
 		return
 	}
+	primary := *client
+	if timeoutSec > 0 {
+		primary.Timeout = time.Duration(timeoutSec) * time.Second
+	}
 	options := retryablehttp.Options{RetryMax: retryMax}
 	if timeoutSec > 0 {
 		options.RetryWaitMax = time.Duration(timeoutSec) * time.Second
 	}
-	s.Client = retryablehttp.NewWithHTTPClient(client, options)
+	s.Client = retryablehttp.NewWithHTTPClient(&primary, options)
 	if s.Client != nil {
-		s.Client.HTTPClient2 = buildHTTP2FallbackClient(client)
+		s.Client.HTTPClient2 = buildHTTP2FallbackClient(&primary)
 	}
 	s.RetryMax = retryMax
 }
@@ -143,9 +164,15 @@ func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, 
 }
 
 func (s *Session) Do(request *retryablehttp.Request, source string) (*http.Response, error) {
+	if err := s.Context().Err(); err != nil {
+		return nil, err
+	}
 	err := s.RateLimits.Take(source)
 	if err != nil {
 		return nil, err
+	}
+	if s.ctx != nil && request != nil && request.Context() == context.Background() {
+		request = request.WithContext(s.ctx)
 	}
 	// close request connection (does not reuse connections)
 	request.Close = true
