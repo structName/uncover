@@ -243,3 +243,53 @@ func TestSessionCloseStopsRateLimiterGoroutines(t *testing.T) {
 	}
 	require.LessOrEqual(t, runtime.NumGoroutine(), baseline)
 }
+
+type cancelAfterHeadersRoundTripper struct {
+	cancel context.CancelFunc
+	last   *trackingReadCloser
+}
+
+func (rt *cancelAfterHeadersRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	body := &trackingReadCloser{reader: strings.NewReader("partial")}
+	rt.last = body
+	if rt.cancel != nil {
+		rt.cancel()
+	}
+	return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+}
+
+func TestSessionDoClosesBodyWhenClientReturnsRespAndErr(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rt := &cancelAfterHeadersRoundTripper{cancel: cancel}
+	sess, err := NewSession(&Keys{}, 0, 5, 100, []string{"fofa"}, time.Second, "")
+	require.NoError(t, err)
+	defer sess.Close()
+	sess.UseHTTPClient(&http.Client{Transport: rt}, 0, 5)
+	sess = sess.WithContext(ctx)
+
+	req, err := retryablehttp.NewRequest(http.MethodGet, "https://example.invalid/cancel", nil)
+	require.NoError(t, err)
+	resp, err := sess.Do(req, "fofa")
+	require.Error(t, err)
+	require.Nil(t, resp)
+	require.NotNil(t, rt.last)
+	require.True(t, rt.last.closed.Load())
+}
+
+func TestNewSessionDuplicateEnginesDoNotLeakGoroutines(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	for i := 0; i < 15; i++ {
+		sess, err := NewSession(&Keys{}, 0, 5, 10, []string{"fofa", "fofa", "default"}, time.Second, "")
+		require.NoError(t, err)
+		sess.Close()
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline {
+			return
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	require.LessOrEqual(t, runtime.NumGoroutine(), baseline)
+}

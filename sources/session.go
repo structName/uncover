@@ -172,8 +172,12 @@ func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, 
 		return nil, err
 	}
 
-	// setup ratelimit of all engines
+	seenEngines := map[string]struct{}{"default": {}}
 	for _, engine := range engines {
+		if _, exists := seenEngines[engine]; exists {
+			continue
+		}
+		seenEngines[engine] = struct{}{}
 		rateLimitOpts := defaultRatelimit
 		if rateLimit <= 0 {
 			rateLimitOpts = DefaultRateLimits[engine]
@@ -210,6 +214,10 @@ func (s *Session) Do(request *retryablehttp.Request, source string) (*http.Respo
 	request.Close = true
 	resp, err := s.Client.Do(request)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+		}
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
