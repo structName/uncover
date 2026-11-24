@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -59,6 +60,15 @@ func (s *Session) Context() context.Context {
 		return s.ctx
 	}
 	return context.Background()
+}
+
+func (s *Session) Close() {
+	if s == nil {
+		return
+	}
+	if s.RateLimits != nil {
+		s.RateLimits.Stop()
+	}
 }
 
 func (s *Session) SendResult(results chan<- Result, res Result) bool {
@@ -174,6 +184,7 @@ func NewSession(keys *Keys, retryMax, timeout, rateLimit int, engines []string, 
 		copied := *rateLimitOpts
 		copied.Key = engine
 		if err = session.RateLimits.Add(&copied); err != nil {
+			session.Close()
 			return nil, errorutil.NewWithErr(err).Msgf("failed to setup ratelimit of %v got %v", engine, err)
 		}
 	}
@@ -202,6 +213,11 @@ func (s *Session) Do(request *retryablehttp.Request, source string) (*http.Respo
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.Body != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			resp.Body = http.NoBody
+		}
 		requestURL, _ := url.QueryUnescape(request.String())
 		return resp, fmt.Errorf("unexpected status code %d received from %s", resp.StatusCode, requestURL)
 	}

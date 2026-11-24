@@ -64,6 +64,7 @@ func TestExecuteTwoPageTimeoutClosesChannelAndExitsGoroutinesWhenCallerStopsRead
 	}))
 	defer srv.Close()
 
+	baseline := runtime.NumGoroutine()
 	svc, err := NewWithKeys(&Options{
 		Agents:        []string{"fofa"},
 		Queries:       []string{`ip="1.2.3.4"`},
@@ -77,9 +78,9 @@ func TestExecuteTwoPageTimeoutClosesChannelAndExitsGoroutinesWhenCallerStopsRead
 		BaseURLs: map[string]string{"fofa": srv.URL},
 	})
 	require.NoError(t, err)
+	defer svc.Close()
 	svc.Session.UseHTTPClient(&http.Client{}, 0, 1)
 
-	baseline := runtime.NumGoroutine()
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -100,6 +101,7 @@ func TestExecuteTwoPageTimeoutClosesChannelAndExitsGoroutinesWhenCallerStopsRead
 	<-ctx.Done()
 
 	assertChannelCloses(t, ch, 2*time.Second)
+	svc.Close()
 	svc.Session.Client.HTTPClient.CloseIdleConnections()
 	srv.Close()
 	waitUntilGoroutinesAtMost(t, baseline, 2*time.Second)
@@ -132,6 +134,7 @@ func TestExecuteFullBufferTimeoutUnblocksRelayAndProducer(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	baseline := runtime.NumGoroutine()
 	svc, err := NewWithKeys(&Options{
 		Agents:        []string{"fofa"},
 		Queries:       []string{`ip="10.0.0.1"`},
@@ -145,9 +148,9 @@ func TestExecuteFullBufferTimeoutUnblocksRelayAndProducer(t *testing.T) {
 		BaseURLs: map[string]string{"fofa": srv.URL},
 	})
 	require.NoError(t, err)
+	defer svc.Close()
 	svc.Session.UseHTTPClient(&http.Client{}, 0, 1)
 
-	baseline := runtime.NumGoroutine()
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -156,6 +159,7 @@ func TestExecuteFullBufferTimeoutUnblocksRelayAndProducer(t *testing.T) {
 
 	<-ctx.Done()
 	assertChannelCloses(t, ch, 2*time.Second)
+	svc.Close()
 	svc.Session.Client.HTTPClient.CloseIdleConnections()
 	srv.Close()
 	waitUntilGoroutinesAtMost(t, baseline, 2*time.Second)
@@ -180,8 +184,10 @@ func (a *stubbornExternalAgent) Query(_ *sources.Session, _ *sources.Query) (cha
 }
 
 func TestExecuteDrainsSlowExternalAgentOnContextDone(t *testing.T) {
+	baseline := runtime.NumGoroutine()
 	sess, err := sources.NewSession(&sources.Keys{FofaKey: "k"}, 0, 1, 100, []string{"stubborn"}, time.Second, "")
 	require.NoError(t, err)
+	defer sess.Close()
 
 	agent := &stubbornExternalAgent{unblocked: make(chan struct{})}
 	svc := &Service{
@@ -192,7 +198,6 @@ func TestExecuteDrainsSlowExternalAgentOnContextDone(t *testing.T) {
 		Keys:     sources.Keys{FofaKey: "k"},
 	}
 
-	baseline := runtime.NumGoroutine()
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
 
@@ -206,5 +211,40 @@ func TestExecuteDrainsSlowExternalAgentOnContextDone(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("external agent stayed blocked after ctx.Done()")
 	}
+	svc.Close()
+	waitUntilGoroutinesAtMost(t, baseline, 2*time.Second)
+}
+
+func TestServiceCloseReleasesRateLimitersAcrossRepeatedRuns(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error":false,"page":1,"size":1,"results":[["1.2.3.4","443","ok.example"]]}`))
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	baseline := runtime.NumGoroutine()
+	for i := 0; i < 12; i++ {
+		svc, err := NewWithKeys(&Options{
+			Agents:        []string{"fofa"},
+			Queries:       []string{`ip="1.2.3.4"`},
+			Limit:         1,
+			MaxRetry:      0,
+			Timeout:       2,
+			RateLimit:     100,
+			RateLimitUnit: time.Second,
+		}, &sources.Keys{
+			FofaKey:  "test-key",
+			BaseURLs: map[string]string{"fofa": srv.URL},
+		})
+		require.NoError(t, err)
+		svc.Session.UseHTTPClient(client, 0, 2)
+		ch, err := svc.Execute(context.Background())
+		require.NoError(t, err)
+		for range ch {
+		}
+		svc.Close()
+	}
+	srv.Close()
 	waitUntilGoroutinesAtMost(t, baseline, 2*time.Second)
 }

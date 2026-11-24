@@ -3,11 +3,15 @@ package sources
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"runtime"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +31,7 @@ func TestSessionRetry(t *testing.T) {
 	engines := []string{"shodan", "publicwww"}
 	session, err := NewSession(&Keys{}, 5, 3, 60, engines, time.Second, "")
 	require.Nil(t, err)
+	defer session.Close()
 	req, err := retryablehttp.NewRequest(http.MethodGet, ts.URL, nil)
 	require.Nil(t, err)
 	resp, err := session.Do(req, engines[0])
@@ -129,6 +134,7 @@ func TestUseHTTPClientTimeoutAbortsWithoutMutatingCaller(t *testing.T) {
 	}
 	sess, err := NewSession(&Keys{}, 0, 30, 10, []string{"fofa"}, time.Second, "")
 	require.NoError(t, err)
+	defer sess.Close()
 	sess.UseHTTPClient(sharedClient, 0, 1)
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, srv.URL, nil)
@@ -172,4 +178,68 @@ func TestSendResultHonorsContextDone(t *testing.T) {
 	s2 := (&Session{}).WithContext(ctx2)
 	unbuffered := make(chan Result)
 	require.False(t, s2.SendResult(unbuffered, Result{Source: "fofa", IP: "3.3.3.3"}))
+}
+
+type trackingReadCloser struct {
+	reader io.Reader
+	closed atomic.Bool
+}
+
+func (t *trackingReadCloser) Read(p []byte) (int, error) {
+	return t.reader.Read(p)
+}
+
+func (t *trackingReadCloser) Close() error {
+	t.closed.Store(true)
+	return nil
+}
+
+type statusRoundTripper struct {
+	status int
+	last   *trackingReadCloser
+}
+
+func (rt *statusRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	body := &trackingReadCloser{reader: strings.NewReader("error payload")}
+	rt.last = body
+	return &http.Response{StatusCode: rt.status, Body: body}, nil
+}
+
+func TestSessionDoClosesBodyOnNon200AndPreservesStatusCode(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusNoContent, http.StatusInternalServerError} {
+		rt := &statusRoundTripper{status: status}
+		sess, err := NewSession(&Keys{}, 0, 5, 100, []string{"fofa"}, time.Second, "")
+		require.NoError(t, err)
+		defer sess.Close()
+		sess.UseHTTPClient(&http.Client{Transport: rt}, 0, 5)
+
+		req, err := retryablehttp.NewRequest(http.MethodGet, "https://example.invalid/test", nil)
+		require.NoError(t, err)
+
+		resp, err := sess.Do(req, "fofa")
+		require.Error(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, status, resp.StatusCode)
+		require.NotNil(t, rt.last)
+		require.True(t, rt.last.closed.Load())
+		require.NoError(t, resp.Body.Close())
+	}
+}
+
+func TestSessionCloseStopsRateLimiterGoroutines(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	for i := 0; i < 20; i++ {
+		sess, err := NewSession(&Keys{}, 0, 5, 10, []string{"fofa"}, time.Second, "")
+		require.NoError(t, err)
+		sess.Close()
+		sess.Close()
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline {
+			return
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	require.LessOrEqual(t, runtime.NumGoroutine(), baseline)
 }

@@ -160,6 +160,13 @@ func buildAgents(agentNames []string) []sources.Agent {
 	return agents
 }
 
+func (s *Service) Close() {
+	if s == nil || s.Session == nil {
+		return
+	}
+	s.Session.Close()
+}
+
 func (s *Service) Execute(ctx context.Context) (<-chan sources.Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
